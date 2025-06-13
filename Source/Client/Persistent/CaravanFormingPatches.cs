@@ -215,7 +215,7 @@ namespace Multiplayer.Client.Persistent
         }
     }
 
-    [HarmonyPatch(typeof(FormCaravanGizmoUtility), nameof(FormCaravanGizmoUtility.DialogFromToSettlement))]
+    [HarmonyPatch(typeof(WorldGizmoUtility), nameof(WorldGizmoUtility.DialogFromToSettlement))]
     static class HandleFormCaravanShowRoutePlanner
     {
         static bool Prefix(Map origin, int tile)
