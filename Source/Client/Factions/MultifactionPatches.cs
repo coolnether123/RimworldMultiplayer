@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -193,7 +193,7 @@ static class PawnIsColonistPatch
 [HarmonyPatch(typeof(Ideo), nameof(Ideo.RecacheColonistBelieverCount))]
 static class RecacheColonistBelieverCountPatch
 {
-    private static MethodInfo allColonists = AccessTools.PropertyGetter(typeof(PawnsFinder), nameof(PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive_FreeColonists_NoCryptosleep));
+    private static MethodInfo allColonists = AccessTools.PropertyGetter(typeof(PawnsFinder), nameof(PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive_FreeColonists_NoCryptosleep));
 
     static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
     {
