@@ -158,7 +158,7 @@ namespace Multiplayer.Client
 
                 if (f.Name == "calcGrid" &&
                     (f.DeclaringType == typeof(PathFinder) ||
-                    f.DeclaringType == typeof(WorldPathFinder)
+                    f.DeclaringType == typeof(WorldPathing)
                 )) continue;
 
                 builder.Append(' ', depth);

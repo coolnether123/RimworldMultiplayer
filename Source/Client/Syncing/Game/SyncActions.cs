@@ -1,4 +1,4 @@
-﻿using RimWorld;
+using RimWorld;
 using RimWorld.Planet;
 using System;
 using System.Collections.Generic;
@@ -10,15 +10,15 @@ namespace Multiplayer.Client
     static class SyncActions
     {
         static SyncAction<FloatMenuOption, WorldObject, Caravan, object> SyncWorldObjCaravanMenus;
-        static SyncAction<FloatMenuOption, WorldObject, IEnumerable<IThingHolder>, CompLaunchable> SyncTransportPodMenus;
+        static SyncAction<FloatMenuOption, WorldObject, IEnumerable<IThingHolder>, Action<PlanetTile, TransportersArrivalAction>> SyncTransportPodMenus;
 
         public static void Init()
         {
             SyncWorldObjCaravanMenus = RegisterActions((WorldObject obj, Caravan c) => obj.GetFloatMenuOptions(c), o => ref o.action);
             SyncWorldObjCaravanMenus.PatchAll(nameof(WorldObject.GetFloatMenuOptions));
 
-            SyncTransportPodMenus = RegisterActions((WorldObject obj, IEnumerable<IThingHolder> p, CompLaunchable r) => obj.GetTransportPodsFloatMenuOptions(p, r), o => ref o.action);
-            SyncTransportPodMenus.PatchAll(nameof(WorldObject.GetTransportPodsFloatMenuOptions));
+            SyncTransportPodMenus = RegisterActions((WorldObject obj, IEnumerable<IThingHolder> p, Action<PlanetTile, TransportersArrivalAction> a) => obj.GetTransportersFloatMenuOptions(p, a), o => ref o.action);
+            SyncTransportPodMenus.PatchAll(nameof(WorldObject.GetTransportersFloatMenuOptions));
         }
 
         static SyncAction<T, A, B, object> RegisterActions<T, A, B>(Func<A, B, IEnumerable<T>> func, ActionGetter<T> actionGetter)
