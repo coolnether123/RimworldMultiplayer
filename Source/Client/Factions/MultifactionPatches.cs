@@ -211,7 +211,7 @@ static class RecacheColonistBelieverCountPatch
     {
         colonistsAllFactions.Clear();
 
-        foreach (var p in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive)
+        foreach (var p in PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive)
         {
             if (IsColonistAnyFaction(p) && p.HostFaction == null && !p.InCryptosleep)
                 colonistsAllFactions.Add(p);
@@ -286,7 +286,7 @@ static class AnyPawnBlockingMapRemovalPatch
 static class IsValidColonyPawnPatch
 {
     private static MethodInfo isColonist = AccessTools.PropertyGetter(typeof(Pawn), nameof(Pawn.IsColonist));
-    private static MethodInfo isColonyMutant = AccessTools.PropertyGetter(typeof(Pawn), nameof(Pawn.IsColonyMutant));
+    private static MethodInfo isColonyMutant = AccessTools.PropertyGetter(typeof(Pawn), nameof(Pawn.IsColonySubhuman));
 
     static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
     {
