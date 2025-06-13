@@ -23,7 +23,7 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(MapInterface), nameof(MapInterface.MapInterfaceUpdate));
             yield return AccessTools.Method(typeof(AlertsReadout), nameof(AlertsReadout.AlertsReadoutUpdate));
             yield return AccessTools.Method(typeof(SoundRoot), nameof(SoundRoot.Update));
-            yield return AccessTools.Method(typeof(FloatMenuMakerMap), nameof(FloatMenuMakerMap.ChoicesAtFor));
+            yield return AccessTools.Method(typeof(FloatMenuMakerMap), nameof(FloatMenuMakerMap.GetOptions));
         }
 
         [HarmonyPriority(MpPriority.MpFirst)]
