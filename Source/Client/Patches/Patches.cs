@@ -357,7 +357,7 @@ namespace Multiplayer.Client
             if (Multiplayer.Client == null) return;
 
             // Ignore unpausing
-            if (__result && __instance.active && WorldRendererUtility.WorldRenderedNow)
+            if (__result && __instance.active && WorldRendererUtility.WorldRendered)
                 __result = false;
         }
     }

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Multiplayer.Common;
 using RimWorld.Planet;
@@ -36,7 +36,7 @@ public class PlayerCursors
         var writer = new ByteWriter();
         writer.WriteByte(cursorSeq++);
 
-        if (Find.CurrentMap != null && !WorldRendererUtility.WorldRenderedNow)
+        if (Find.CurrentMap != null && !WorldRendererUtility.WorldRendered)
         {
             writer.WriteByte((byte)Find.CurrentMap.Index);
 
@@ -67,7 +67,7 @@ public class PlayerCursors
         var writer = new ByteWriter();
 
         int mapId = Find.CurrentMap?.Index ?? -1;
-        if (WorldRendererUtility.WorldRenderedNow) mapId = -1;
+        if (WorldRendererUtility.WorldRendered) mapId = -1;
 
         bool reset = false;
 

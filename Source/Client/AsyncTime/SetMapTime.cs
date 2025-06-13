@@ -29,7 +29,7 @@ namespace Multiplayer.Client
         [HarmonyPriority(MpPriority.MpFirst)]
         internal static void Prefix(ref TimeSnapshot? __state)
         {
-            if (Multiplayer.Client == null || WorldRendererUtility.WorldRenderedNow || Find.CurrentMap == null) return;
+            if (Multiplayer.Client == null || WorldRendererUtility.WorldRendered || Find.CurrentMap == null) return;
             __state = TimeSnapshot.GetAndSetFromMap(Find.CurrentMap);
         }
 

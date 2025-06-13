@@ -246,7 +246,7 @@ namespace Multiplayer.Client
                         DebugSource.Tree,
                         0,
                         node.NodePath(),
-                        WorldRendererUtility.WorldRenderedNow ? null : Find.CurrentMap
+                        WorldRendererUtility.WorldRendered ? null : Find.CurrentMap
                     );
             }
         }
