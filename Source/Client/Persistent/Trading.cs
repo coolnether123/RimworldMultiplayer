@@ -752,7 +752,7 @@ namespace Multiplayer.Client
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_AgeTracker), nameof(Pawn_AgeTracker.AgeTick))]
+    [HarmonyPatch(typeof(Pawn_AgeTracker), nameof(Pawn_AgeTracker.ageBiologicalTicksInt))]
     static class PawnAgeChanged
     {
         static void Prefix(Pawn_AgeTracker __instance, ref int __state)
