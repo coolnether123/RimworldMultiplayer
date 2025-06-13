@@ -211,7 +211,7 @@ static class RecacheColonistBelieverCountPatch
     {
         colonistsAllFactions.Clear();
 
-        foreach (var p in PawnsFinder.AllMapsCaravansAndTravelingTransportPods_Alive)
+        foreach (var p in PawnsFinder.AllMapsCaravansAndTravellingTransporters_Alive)
         {
             if (IsColonistAnyFaction(p) && p.HostFaction == null && !p.InCryptosleep)
                 colonistsAllFactions.Add(p);
