@@ -13,7 +13,8 @@ namespace Multiplayer.Client.Patches
     {
         static void Postfix(GlowGrid __instance)
         {
-            __instance.litGlowers = new HashSet<CompGlower>(new CompGlowerEquality());
+            AccessTools.Property(typeof(GlowGrid), "litGlowers").SetValue(__instance, new HashSet<CompGlower>(new CompGlowerEquality()));
+//            __instance.litGlowers = new HashSet<CompGlower>(new CompGlowerEquality());
         }
 
         class CompGlowerEquality : IEqualityComparer<CompGlower>
