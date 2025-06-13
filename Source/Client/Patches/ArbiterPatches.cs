@@ -66,22 +66,14 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(SectionLayer), nameof(SectionLayer.DrawLayer));
             yield return AccessTools.Method(typeof(Map), nameof(Map.MapUpdate));
             yield return AccessTools.Method(typeof(GUIStyle), nameof(GUIStyle.CalcSize));
+
+            yield return AccessTools.Method(typeof(WorldRenderer), nameof(WorldRenderer.DrawWorldLayers));
+            yield return AccessTools.Method(typeof(WorldRenderer), nameof(WorldRenderer.RegenerateAllLayersNow));
         }
 
         static bool Prefix() => !Multiplayer.arbiterInstance;
     }
 
-    [HarmonyPatch(typeof(WorldRenderer), MethodType.Constructor)]
-    static class CancelWorldRendererCtor
-    {
-        static bool Prefix() => !Multiplayer.arbiterInstance;
-
-        static void Postfix(WorldRenderer __instance)
-        {
-            if (Multiplayer.arbiterInstance)
-                __instance.layers = new List<WorldLayer>();
-        }
-    }
 
     [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.LongEventsUpdate))]
     static class ArbiterLongEventPatch
