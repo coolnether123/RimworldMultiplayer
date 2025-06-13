@@ -122,7 +122,7 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(SettlementAbandonUtility), nameof(SettlementAbandonUtility.Abandon)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(WorldSelector), nameof(WorldSelector.AutoOrderToTileNow)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(CaravanMergeUtility), nameof(CaravanMergeUtility.TryMergeSelectedCaravans)).SetContext(SyncContext.WorldSelected);
-            SyncMethod.Register(typeof(PawnBanishUtility), nameof(PawnBanishUtility.Banish)).CancelIfAnyArgNull();
+            SyncMethod.Register(typeof(PawnBanishUtility), nameof(PawnBanishUtility.Banish), [typeof(Pawn), typeof(bool)]).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(SettlementUtility), nameof(SettlementUtility.Attack)).CancelIfAnyArgNull();
 
             SyncMethod.Register(typeof(WITab_Caravan_Gear), nameof(WITab_Caravan_Gear.TryEquipDraggedItem)).SetContext(SyncContext.WorldSelected).CancelIfNoSelectedWorldObjects().CancelIfAnyArgNull();
@@ -266,15 +266,7 @@ namespace Multiplayer.Client
             SyncMethod.Lambda(typeof(CompObelisk), nameof(CompObelisk.CompGetGizmosExtra), 0).SetDebugOnly(); // Trigger interaction effect
             SyncMethod.Lambda(typeof(Pawn_NeedsTracker), nameof(Pawn_NeedsTracker.GetGizmos), 0).SetDebugOnly(); // +5% mech energy
             SyncMethod.Lambda(typeof(Pawn_NeedsTracker), nameof(Pawn_NeedsTracker.GetGizmos), 1).SetDebugOnly(); // -5% mech energy
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 4).SetDebugOnly();  // Cause mental break
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 6).SetDebugOnly();  // Make random pawn hungry
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 8).SetDebugOnly();  // Kill random pawn
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 9).SetDebugOnly();  // Kill all non-slave pawns
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 10).SetDebugOnly(); // Harm random pawn
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 11).SetDebugOnly(); // Down random pawn
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 13).SetDebugOnly(); // Plague on random pawn
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 15).SetDebugOnly(); // Teleport to destination
-            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 16).SetDebugOnly(); // +20% psyfocus
+
             SyncMethod.Register(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.Forage)).SetDebugOnly(); // Dev forage
             SyncMethod.Lambda(typeof(EnterCooldownComp), nameof(EnterCooldownComp.GetGizmos), 0).SetDebugOnly(); // Set enter cooldown to 1 hour
             SyncMethod.Lambda(typeof(EnterCooldownComp), nameof(EnterCooldownComp.GetGizmos), 1).SetDebugOnly(); // Reset enter cooldown
@@ -323,10 +315,11 @@ namespace Multiplayer.Client
             // Mechs
             // Charger
             SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 0).SetDebugOnly(); // Waste 100%
-            SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 1).SetDebugOnly(); // Waste 25%
+            SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 1).SetDebugOnly(); // Waste +25%
             SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 2).SetDebugOnly(); // Waste 0%
-            SyncMethod.Register(typeof(Building_MechCharger), nameof(Building_MechCharger.GenerateWastePack)).SetDebugOnly(); // Generate waste, lambdaOrdinal: 3
-            SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 4).SetDebugOnly(); // Charge 100%
+            SyncMethod.Register(typeof(Building_MechCharger), nameof(Building_MechCharger.GenerateWastePack)).SetDebugOnly(); // Generate waste
+            SyncMethod.Lambda(typeof(Building_MechCharger), nameof(Building_MechCharger.GetGizmos), 3).SetDebugOnly(); // Charge 100%
+
             // Gestator
             SyncMethod.Lambda(typeof(Building_MechGestator), nameof(Building_MechGestator.GetGizmos), 0).SetDebugOnly(); // Generate 5 waste
             SyncMethod.Register(typeof(Bill_Mech), nameof(Bill_Mech.ForceCompleteAllCycles)).SetDebugOnly(); // Called from Building_MechGestator.GetGizmos
@@ -400,7 +393,7 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(PitBurrow), nameof(PitBurrow.Collapse)).SetDebugOnly();
             SyncMethod.Lambda(typeof(PitBurrow), nameof(PitBurrow.GetGizmos), 0).SetDebugOnly(); // Spawn fleshbeast
             SyncMethod.Register(typeof(PitGate), nameof(PitGate.TryFireIncident)).SetDebugOnly(); // Trigger incident with specific point value/with natural point value
-            SyncMethod.Lambda(typeof(PitGate), nameof(PitGate.GetGizmos), 4).SetDebugOnly(); // End cooldown
+            SyncMethod.Lambda(typeof(PitGate), nameof(PitGate.GetGizmos), 3).SetDebugOnly(); // End cooldown
             SyncMethod.Register(typeof(PitGate), nameof(PitGate.BeginCollapsing)).SetDebugOnly();
 
             // Bioferrite harvester

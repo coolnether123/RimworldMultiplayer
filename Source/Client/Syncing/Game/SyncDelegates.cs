@@ -18,21 +18,22 @@ namespace Multiplayer.Client
         {
             const SyncContext mouseKeyContext = SyncContext.QueueOrder_Down | SyncContext.MapMouseCell;
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Arrest), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                        // Arrest
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_BringBabyToSafety), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);               // Bring baby to safety
+            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_BringBabyToSafety), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);               // Bring baby to safety
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CaptureEntity), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                  // Capture entity
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CapturePawn), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                // Capture pawn (prisoner or slave)
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryDeathrestingToCasket), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);  // Carry deathresting to casket
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryingPawn), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                    // Carry downed pawn
+            //SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryingPawn), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                    // Carry downed pawn
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryMechToCharger), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);         // Carry mech to charger
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryPawnToExit), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Carry pawn to exit grid
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryToBiosculpterPod), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);          // Carry to biosculpter pod
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryToCryptosleepCasket), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);  // Carry to cryptosleep casket
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryToShuttle), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Carry to shuttle
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Childcare), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                     // Breastfeed/give milk
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CleanRoom), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                 // Clean room
+            //SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CarryToShuttle), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Carry to shuttle
+            //SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Childcare), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                     // Breastfeed/give milk
+            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_CleanRoom), "GetSingleOption", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                 // Clean room
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Deathrest), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                 // Deathrest
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedAttack), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Drafted attack
-            SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedMove), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);               // Drafted move (Goto)
+            //SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedAttack), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Drafted attack
+            //SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedMove), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);               // Drafted move (Goto)
+            /*
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedRepair), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);             // Drafted repair
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DraftedTend), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                     // Drafted tend
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_DressOtherPawn), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);            // Dress other pawn
@@ -66,6 +67,7 @@ namespace Multiplayer.Client
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Wear), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                       // Wear
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_WorkGivers), "GetOptionsFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                      // Generic work givers
             SyncDelegate.Lambda(typeof(FloatMenuOptionProvider_Xenogerm), "GetSingleOptionFor", 0).CancelIfAnyFieldNull().SetContext(mouseKeyContext);                   // Implant xenogerm
+            */
 
 
 
@@ -91,7 +93,7 @@ namespace Multiplayer.Client
 
             SyncDelegate.LambdaInGetter(typeof(Designator), nameof(Designator.RightClickFloatMenuOptions), 0) // Designate all
                 .TransformField("things", Serializer.SimpleReader(() => Find.CurrentMap.listerThings.AllThings)).SetContext(SyncContext.CurrentMap);
-            SyncDelegate.LambdaInGetter(typeof(Designator), nameof(Designator.RightClickFloatMenuOptions), 1).SetContext(SyncContext.CurrentMap); // Remove all designations
+            //SyncDelegate.LambdaInGetter(typeof(Designator), nameof(Designator.RightClickFloatMenuOptions), 1).SetContext(SyncContext.CurrentMap); // Remove all designations
 
             SyncDelegate.Lambda(typeof(CaravanAbandonOrBanishUtility), nameof(CaravanAbandonOrBanishUtility.TryAbandonOrBanishViaInterface), 1, [typeof(Thing), typeof(Caravan)]).CancelIfAnyFieldNull(); // Abandon caravan thing
             SyncDelegate.Lambda(typeof(CaravanAbandonOrBanishUtility), nameof(CaravanAbandonOrBanishUtility.TryAbandonOrBanishViaInterface), 0, [typeof(TransferableImmutable), typeof(Caravan)]).CancelIfAnyFieldNull(); // Abandon caravan transferable
@@ -191,9 +193,8 @@ namespace Multiplayer.Client
             // Overseer subject
             // Disable 'needs overseer' effect/Allow mech undrafted orders are static fields that are remembered when joining,
             // could cause issues if someone pressed one of them and then started playing MP. Values reset on game restart.
-            SyncMethod.Register(typeof(CompOverseerSubject), nameof(CompOverseerSubject.ForceFeral)).SetDebugOnly(); // Make feral
-            SyncMethod.Lambda(typeof(CompOverseerSubject), nameof(CompOverseerSubject.CompGetGizmosExtra), 4).SetDebugOnly(); // Make feral (event)
-            SyncDelegate.Lambda(typeof(CompOverseerSubject), nameof(CompOverseerSubject.CompGetGizmosExtra), 6).SetDebugOnly(); // Assign to overseer
+            SyncMethod.Lambda(typeof(CompOverseerSubject), nameof(CompOverseerSubject.CompGetGizmosExtra), 0).SetDebugOnly(); // Make feral (event)
+            //SyncDelegate.Lambda(typeof(CompOverseerSubject), nameof(CompOverseerSubject.CompGetGizmosExtra), 1).SetDebugOnly(); // Assign to overseer
 
             // Glower
             SyncMethod.Register(typeof(CompGlower), nameof(CompGlower.SetGlowColorInternal)); // Set color gizmo - will send a separate command per selected glower. Could be fixed with a transpiler for Dialog_GlowerColorPicker
@@ -258,7 +259,7 @@ namespace Multiplayer.Client
             SyncMethod.Lambda(typeof(CompFleshmassSpitter), nameof(CompFleshmassSpitter.CompGetGizmosExtra), 0).SetDebugOnly(); // Remove spit cooldown
 
             // Dev mode gizmos
-            SyncDelegate.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 17).SetDebugOnly(); // Trigger random dissolution event (CompDissolution)
+            //SyncDelegate.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 17).SetDebugOnly(); // Trigger random dissolution event (CompDissolution)
             SyncDelegate.Lambda(typeof(GroundSpawner), nameof(GroundSpawner.GetGizmos), 1).SetDebugOnly(); // Set spawn delay
             SyncDelegate.Lambda(typeof(GeneResourceDrainUtility), nameof(GeneResourceDrainUtility.GetResourceDrainGizmos), 0).SetDebugOnly(); // -10% resource
             SyncDelegate.Lambda(typeof(GeneResourceDrainUtility), nameof(GeneResourceDrainUtility.GetResourceDrainGizmos), 1).SetDebugOnly(); // +10% resource

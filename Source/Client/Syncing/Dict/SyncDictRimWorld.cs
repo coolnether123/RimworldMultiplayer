@@ -822,6 +822,65 @@ namespace Multiplayer.Client
             #endregion
 
             #region Maps
+
+             {
+                (ByteWriter data, PlanetTile tile) =>
+                {
+                    // Write the two integer fields that define a PlanetTile
+                    data.WriteInt32(tile.tileId);
+                    // We need reflection to access the private layerId field
+                    var layerId = (int)AccessTools.Field(typeof(PlanetTile), "layerId").GetValue(tile);
+                    data.WriteInt32(layerId);
+                },
+                (ByteReader data) =>
+                {
+                    // Read the two fields and reconstruct the PlanetTile
+                    var tileId = data.ReadInt32();
+                    var layerId = data.ReadInt32();
+                    return new PlanetTile(tileId, layerId);
+                }
+            },
+                {
+                (ByteWriter data, Action<PlanetTile, TransportersArrivalAction> action) =>
+                {
+                    WriteSync<object>(data, action.Target);
+                    data.WriteString(action.Method.Name);
+                },
+                (ByteReader data) =>
+                {
+                    // ReadSyncObject can infer the type from the data stream.
+                    var target = ReadSync<object>(data);
+                    var methodName = data.ReadString();
+                    // Use the ReadSync helper for arrays.
+                    var parameterTypes = ReadSync<Type[]>(data);
+
+                    if (target == null || methodName == null) return null;
+
+                    var method = AccessTools.Method(target.GetType(), methodName, parameterTypes);
+                    if (method == null) return null;
+
+                    return (Action<PlanetTile, TransportersArrivalAction>)Delegate.CreateDelegate(typeof(Action<PlanetTile, TransportersArrivalAction>), target, method);
+                }
+            },
+              {
+                (ByteWriter data, FloatMenuContext context) =>
+                {
+                    // Write the fields required by its constructor
+                    WriteSync(data, context.allSelectedPawns);
+                    WriteSync(data, context.clickPosition);
+                    WriteSync(data, context.map);
+                },
+                (ByteReader data) =>
+                {
+                    // Read the fields and reconstruct the FloatMenuContext
+                    var pawns = ReadSync<List<Pawn>>(data);
+                    var pos = ReadSync<UnityEngine.Vector3>(data);
+                    var map = ReadSync<Map>(data);
+                    // The constructor can handle a null map, but pawns and position are essential
+                    if (pawns == null || pos == default) return null;
+                    return new FloatMenuContext(pawns, pos, map);
+                }
+            },
             {
                 (ByteWriter data, Map map) => data.MpContext().map = map,
                 (ByteReader data) => (data.MpContext().map)
