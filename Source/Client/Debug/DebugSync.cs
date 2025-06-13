@@ -37,13 +37,14 @@ namespace Multiplayer.Client
             var state = Multiplayer.game.playerDebugState.GetOrAddNew(currentPlayer);
 
             var prevTool = DebugTools.curTool;
-            DebugTools.curTool = state.tool;
+            // Use reflection to set the current tool, bypassing readonly error
+            AccessTools.Field(typeof(DebugTools), nameof(DebugTools.curTool)).SetValue(null, state.tool);
 
-            List<object> prevSelected = Find.Selector.selected;
-            List<WorldObject> prevWorldSelected = Find.WorldSelector.selected;
+            var prevSelected = new List<object>(Find.Selector.SelectedObjects);
+            var prevWorldSelected = new List<WorldObject>(Find.WorldSelector.SelectedObjects);
 
-            Find.Selector.selected = new List<object>();
-            Find.WorldSelector.selected = new List<WorldObject>();
+            Find.Selector.ClearSelection();
+            Find.WorldSelector.ClearSelection();
 
             int selectedId = data.ReadInt32();
 
@@ -72,8 +73,12 @@ namespace Multiplayer.Client
                         node.Enter(null);
                         if (node.actionType is DebugActionType.ToolMap or DebugActionType.ToolWorld or DebugActionType.ToolMapForPawns)
                         {
-                            DebugTools.curTool.clickAction();
-                            DebugTools.curTool = null;
+                            if (DebugTools.curTool != null)
+                            {
+                                var clickActionField = AccessTools.Field(typeof(DebugTool), "clickAction");
+                                ((Action)clickActionField.GetValue(DebugTools.curTool))?.Invoke();
+                            }
+                            AccessTools.Field(typeof(DebugTools), nameof(DebugTools.curTool)).SetValue(null, null);
                         }
                     }
                 }
@@ -84,7 +89,11 @@ namespace Multiplayer.Client
                 }
                 else if (source == DebugSource.Tool)
                 {
-                    DebugTools.curTool?.clickAction();
+                    if (DebugTools.curTool != null)
+                    {
+                        var clickActionField = AccessTools.Field(typeof(DebugTool), "clickAction");
+                        ((Action)clickActionField.GetValue(DebugTools.curTool))?.Invoke();
+                    }
                 }
                 else if (source == DebugSource.FloatMenu)
                 {
@@ -96,19 +105,27 @@ namespace Multiplayer.Client
                 if (TickPatch.currentExecutingCmdIssuedBySelf && DebugTools.curTool != null && DebugTools.curTool != state.tool)
                 {
                     var map = Multiplayer.MapContext;
-                    prevTool = new DebugTool(DebugTools.curTool.label, () =>
-                    {
-                        SendCmd(DebugSource.Tool, 0, null, map);
-                    }, DebugTools.curTool.onGUIAction);
+                    Action originalAction = () => SendCmd(DebugSource.Tool, 0, null, map);
+                    var labelField = AccessTools.Field(typeof(DebugTool), "label");
+                    var onGuiActionField = AccessTools.Field(typeof(DebugTool), "onGUIAction");
+                    string currentToolLabel = (string)labelField.GetValue(DebugTools.curTool);
+                    Action currentToolOnGui = (Action)onGuiActionField.GetValue(DebugTools.curTool);
+
+                    prevTool = new DebugTool(currentToolLabel, originalAction, currentToolOnGui);
                 }
 
                 state.tool = DebugTools.curTool;
-                DebugTools.curTool = prevTool;
+                AccessTools.Field(typeof(DebugTools), nameof(DebugTools.curTool)).SetValue(null, prevTool);
 
                 MouseCellPatch.result = null;
                 MouseTilePatch.result = null;
-                Find.Selector.selected = prevSelected;
-                Find.WorldSelector.selected = prevWorldSelected;
+                Find.Selector.ClearSelection();
+                foreach (var sel in prevSelected)
+                    Find.Selector.Select(sel, false, false);
+
+                Find.WorldSelector.ClearSelection();
+                foreach (var sel in prevWorldSelected)
+                    Find.WorldSelector.Select(sel);
 
                 currentHash = 0;
                 currentPlayer = -1;
@@ -219,17 +236,28 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(DebugActionNode), nameof(DebugActionNode.Enter))]
     static class DebugActionNodeEnter
     {
-        static void Prefix(DebugActionNode __instance)
+        static bool Prefix(DebugActionNode __instance)
         {
-            if (Multiplayer.Client != null && __instance.action is {Target: not MpDebugAction})
-                __instance.action = new MpDebugAction { node = __instance, original = __instance.action }.Action;
+            if (Multiplayer.Client == null || __instance.action == null || __instance.action.Target is MpDebugAction)
+                return true;
+
+            new MpDebugAction { node = __instance, original = __instance.action }.Action();
+            return false;
         }
 
         static void Postfix(DebugActionNode __instance)
         {
-            // Other actionTypes get handled by the Prefix
-            if (Multiplayer.Client != null && __instance.actionType == DebugActionType.ToolMapForPawns)
-                DebugTools.curTool.clickAction = new MpDebugAction { node = __instance, original = DebugTools.curTool.clickAction }.Action;
+            if (Multiplayer.Client != null && DebugTools.curTool != null && __instance.actionType == DebugActionType.ToolMapForPawns)
+            {
+                var curTool = DebugTools.curTool;
+                var clickActionField = AccessTools.Field(typeof(DebugTool), "clickAction");
+                var originalAction = (Action)clickActionField.GetValue(curTool);
+
+                if (!(originalAction.Target is MpDebugAction))
+                {
+                    clickActionField.SetValue(curTool, new MpDebugAction { node = __instance, original = originalAction }.Action);
+                }
+            }
         }
 
         class MpDebugAction
