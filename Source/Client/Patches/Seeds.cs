@@ -91,8 +91,8 @@ namespace Multiplayer.Client
         }
     }
 
-    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action))]
-    static class SeedLongEvents
+    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), new[] { typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(bool), typeof(Action) })]
+    static class SeedLongEvents // And MarkLongEvents, LongEventAlwaysSync
     {
         static void Prefix(ref Action action)
         {

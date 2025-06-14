@@ -132,11 +132,11 @@ namespace Multiplayer.Client.Persistent
     [HarmonyPatch(typeof(Dialog_FormCaravan), nameof(Dialog_FormCaravan.Notify_ChoseRoute))]
     static class Notify_ChoseRoutePatch
     {
-        static bool Prefix(Dialog_FormCaravan __instance, int destinationTile)
+        static bool Prefix(Dialog_FormCaravan __instance, PlanetTile destinationTile)
         {
             if (Multiplayer.InInterface && __instance is CaravanFormingProxy dialog)
             {
-                dialog.Session?.ChooseRoute(destinationTile);
+                dialog.Session?.ChooseRoute(destinationTile.tileId);
                 return false;
             }
 
@@ -218,19 +218,19 @@ namespace Multiplayer.Client.Persistent
     [HarmonyPatch(typeof(WorldGizmoUtility), nameof(WorldGizmoUtility.DialogFromToSettlement))]
     static class HandleFormCaravanShowRoutePlanner
     {
-        static bool Prefix(Map origin, int tile)
+        static bool Prefix(Map origin, PlanetTile tile)
         {
             if (Multiplayer.Client == null)
                 return true;
 
             // Override behavior in multiplayer
-            DialogFormCaravanCtorPatch.StartFormingCaravan(origin, routePlannerWaypoint: tile);
+            DialogFormCaravanCtorPatch.StartFormingCaravan(origin, routePlannerWaypoint: tile.tileId);
 
             return false;
         }
     }
 
-    [HarmonyPatch(typeof(TimedForcedExit), nameof(TimedForcedExit.CompTick))]
+    [HarmonyPatch(typeof(TimedForcedExit), "CompTickInterval")]
     static class TimedForcedExitTickPatch
     {
         static bool Prefix(TimedForcedExit __instance)
