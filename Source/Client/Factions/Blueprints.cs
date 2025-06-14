@@ -54,9 +54,10 @@ namespace Multiplayer.Client
     {
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> e, MethodBase original)
         {
-            byte thingToIgnore_Ldarg_S = (byte) original.GetParameters().FirstIndexOf(p => p.Name == "thingToIgnore");
+            byte thingToIgnore_Ldarg_S = (byte)original.GetParameters().FirstIndexOf(p => p.Name == "thingToIgnore");
 
-            if (thingToIgnore_Ldarg_S < 1) {
+            if (thingToIgnore_Ldarg_S < 1)
+            {
                 Log.Error($"FAIL: {nameof(CanPlaceBlueprintAtPatch2)} can't find thingToIgnore");
                 return e;
             }
@@ -74,11 +75,45 @@ namespace Multiplayer.Client
                 new CodeInstruction(OpCodes.Brtrue, insts[loop1 + 1].operand)
             );
 
+            return insts;
+        }
+    }
+
+    [HarmonyPatch(typeof(GenConstruct), nameof(GenConstruct.InteractionCellStandable))]
+    static class InteractionCellStandablePatch
+    {
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> e, MethodBase original)
+        {
+            byte thingToIgnore_Ldarg_S = (byte)original.GetParameters().FirstIndexOf(p => p.Name == "thingToIgnore");
+
+            if (thingToIgnore_Ldarg_S < 1)
+            {
+                Log.Error($"FAIL: {nameof(InteractionCellStandablePatch)} can't find thingToIgnore");
+                return e;
+            }
+
+            List<CodeInstruction> insts = e.ToList();
+
+
+            int i = 0;
+            foreach (CodeInstruction inst in insts)
+            {
+                Log.Message(i.ToString() + ": " + inst.ToString());
+                i++;
+                if (i > 80) break;
+            }
+
+            Log.Message("-----");
+
             int loop2 = new CodeFinder(original, insts).
                 Forward(OpCodes.Ldstr, "InteractionSpotBlocked").
                 Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
 
+            Log.Message(loop2 + ": " + insts[loop2].ToString());
+
+
             insts.Insert(
+                //Have to figure out where the correct insertion point is. Original: loop2 - 3
                 loop2 - 3,
                 new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 3].operand),
                 new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 2].operand),
@@ -88,7 +123,7 @@ namespace Multiplayer.Client
             );
 
             int loop3 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "WouldBlockInteractionSpot").
+                Forward(OpCodes.Ldstr, "InteractionSpotWillBeBlocked").
                 Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
 
             insts.Insert(
