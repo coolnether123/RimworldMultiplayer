@@ -114,8 +114,11 @@ namespace Multiplayer.Client
             yield return new CodeInstruction(OpCodes.Ldarg_0);
             // Access its `WeatherCommonalities` property
             yield return new CodeInstruction(OpCodes.Call, AccessTools.PropertyGetter(typeof(WeatherDecider), nameof(WeatherDecider.WeatherCommonalities)));
+
             // Check if the enumerable has any elements
-            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Enumerable), nameof(Enumerable.Any), new[] { typeof(WeatherCommonalityRecord) }));
+            // THIS IS THE CORRECTED LINE:
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Enumerable), nameof(Enumerable.Any)).MakeGenericMethod(typeof(WeatherCommonalityRecord)));
+
             // If it DOES have elements (is not empty), jump to the original code.
             yield return new CodeInstruction(OpCodes.Brtrue_S, label);
 
