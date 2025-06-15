@@ -81,18 +81,20 @@ namespace Multiplayer.Client
 
             try
             {
-                Log.Message("Makes it here #1");
                 handler.Handle(data);
-                Log.Message("Makes it here #2");
 
             }
             finally
             {
+                Log.Message("Makes it here #1");
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
+                Log.Message("Makes it here #2");
                 Find.Selector.selected = prevSelected;
+                Log.Message("Makes it here #3");
                 //Find.WorldSelector.selected = prevWorldSelected;
-                AccessTools.Property(typeof(WorldObject), "selected").SetValue(Find.WorldSelector.selected, prevWorldSelected);
+                AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, prevWorldSelected);
+                Log.Message("Makes it here #4");
             }
 
             return handler;
