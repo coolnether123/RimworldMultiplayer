@@ -7,16 +7,19 @@ using RimWorld.Planet;
 using Verse;
 
 namespace Multiplayer.Client
-{ 
+{
     // This patch now explicitly targets the main GenerateMap method to avoid ambiguity.
     [HarmonyPatch(typeof(MapGenerator), nameof(MapGenerator.GenerateMap), new[] { typeof(IntVec3), typeof(MapParent), typeof(MapGeneratorDef), typeof(IEnumerable<GenStepWithParams>), typeof(Action<Map>), typeof(bool), typeof(bool) })]
     public static class MapSetup
     {
         // The Postfix runs *after* the original method, receiving the generated map in __result.
+        // This is the correct place to initialize multiplayer components for the map.
         static void Postfix(Map __result)
         {
             if (Multiplayer.Client == null || __result == null) return;
-            //if(__result.Biome.baseWeatherCommonalities.Count > 0) //Remove this it's not going to work but it's here for debug
+            // The check below indicates you were on the right track debugging! The issue happens
+            // before this postfix can run, so the fix needs to be earlier in the call stack.
+            //if(__result.Biome.baseWeatherCommonalities.Count > 0)
             SetupMap(__result);
         }
 
@@ -68,6 +71,40 @@ namespace Multiplayer.Client
             mapComp.factionData[f.loadID].areaManager.AddStartingAreas();
 
             mapComp.customFactionData[f.loadID] = CustomFactionMapData.New(f.loadID, map);
+        }
+    }
+
+    /// <summary>
+    /// FIX: This patch prevents a crash during map generation if a biome has no weathers defined.
+    /// The vanilla code doesn't handle this and throws a NullReferenceException.
+    /// This prefix checks for an empty weather list, safely sets a default weather if needed,
+    /// and then skips the original problematic method.
+    /// </summary>
+    [HarmonyPatch(typeof(WeatherDecider), nameof(WeatherDecider.StartInitialWeather))]
+    public static class WeatherDecider_StartInitialWeather_Patch
+    {
+        static bool Prefix(WeatherDecider __instance, Map ___map)
+        {
+            // Check if the biome's weather list is null or empty.
+            if (__instance.WeatherCommonalities.EnumerableNullOrEmpty())
+            {
+                // This is the problematic situation. Log it and apply a fix.
+                Log.Warning("Multiplayer: Biome has no weather commonalities. Forcing Clear weather to prevent a crash.");
+
+                // Manually set a safe default weather (Clear) and initialize weather manager state.
+                // This code is a safe subset of the original method.
+                ___map.weatherManager.curWeather = WeatherDefOf.Clear;
+                __instance.curWeatherDuration = 10000;
+                ___map.weatherManager.lastWeather = ___map.weatherManager.curWeather;
+                ___map.weatherManager.curWeatherAge = 0;
+                ___map.weatherManager.ResetSkyTargetLerpCache();
+
+                // Return false to skip the original method and prevent the crash.
+                return false;
+            }
+
+            // If weathers exist, let the original method run as intended.
+            return true;
         }
     }
 }
