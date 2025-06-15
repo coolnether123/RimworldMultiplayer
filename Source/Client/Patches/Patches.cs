@@ -847,4 +847,72 @@ namespace Multiplayer.Client
     // END CARAVAN AND CAMP SYNC FIXES
     //======================================================================================
 
+    //======================================================================================
+    // BEGIN CARAVAN DRUG POLICY DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by pawns taking scheduled drugs in a caravan.
+    /// The check for whether to take a drug involves an unseeded random chance, which
+    /// leads to different outcomes on different clients.
+    /// This patch seeds the random number generator before the check occurs.
+    /// </summary>
+    [HarmonyPatch(typeof(CaravanDrugPolicyUtility), nameof(CaravanDrugPolicyUtility.CheckTakeScheduledDrugs))]
+    public static class Caravan_DrugPolicyUtility_Tick_Sync
+    {
+        static void Prefix(Caravan caravan)
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PushState(caravan.ID);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN DRUG POLICY DESYNC FIX
+    //======================================================================================
+
+
+    //======================================================================================
+    // BEGIN CARAVAN TENDING DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by medical tending in a caravan.
+    /// The quality of a medical tend is random, and without a seed, each client would
+    /// calculate a different quality, heal a different amount, and desynchronize.
+    /// This patch seeds the random number generator before any tending occurs.
+    /// </summary>
+    [HarmonyPatch(typeof(CaravanTendUtility), nameof(CaravanTendUtility.CheckTend))]
+    public static class Caravan_TendUtility_Tick_Sync
+    {
+        static void Prefix(Caravan caravan)
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PushState(caravan.ID);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN TENDING DESYNC FIX
+    //======================================================================================
 }
