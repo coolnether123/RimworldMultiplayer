@@ -628,7 +628,7 @@ namespace Multiplayer.Client
         static bool Prefix() => !Multiplayer.InInterface;
     }
     */
-
+    /*
     /// <summary>
     /// This patch fixes a common source of desyncs in RimWorld 1.6. Several background
     /// map processes use the random number generator (Rand) every tick. Without a
@@ -655,25 +655,46 @@ namespace Multiplayer.Client
         }
 
         /// <summary>
-        /// Before any of the targeted methods run, we push a new state to the random number generator.
-        /// We seed it based on whether we are ticking a map or the world.
+        /// This transpiler injects PushState at the beginning and PopState at the end (inside a finally block).
         /// </summary>
-        static void Prefix(Map ___map)
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase original)
         {
-            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            var label = generator.DefineLabel();
+            var tryBegin = generator.BeginExceptionBlock();
+
+            // Push RNG State
+            yield return new CodeInstruction(OpCodes.Ldarg_0); // `this`
+            yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(original.DeclaringType, "map")); // this.map
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(DeterministicMapTickers), nameof(PushRNGState)));
+
+            // Original method instructions
+            foreach (var instruction in instructions)
             {
-                Rand.PushState(___map.AsyncTime().mapTicks);
+                yield return instruction;
+            }
+
+            // Add label for jumping after finally block
+            var last = new CodeInstruction(OpCodes.Nop);
+            last.labels.Add(label);
+
+            // Finally block to pop RNG state
+            generator.BeginFinallyBlock();
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(DeterministicMapTickers), nameof(PopRNGState)));
+            generator.EndExceptionBlock();
+
+            yield return last;
+        }
+
+        public static void PushRNGState(Map map)
+        {
+            if (Multiplayer.Client != null && map?.AsyncTime() != null)
+            {
+                Rand.PushState(map.AsyncTime().mapTicks);
             }
         }
 
-        /// <summary>
-        /// After the method finishes (or if it crashes), we pop the state.
-        /// This restores the RNG to its previous state, preventing our seeded state
-        /// from affecting other parts of the game.
-        /// </summary>
-        static void Finalizer(Map ___map)
+        public static void PopRNGState()
         {
-
             if (Multiplayer.Client != null)
             {
                 Rand.PopState();
@@ -684,7 +705,7 @@ namespace Multiplayer.Client
     //======================================================================================
     // END DESYNC FIX
     //======================================================================================
-
+    */
     //======================================================================================
     // BEGIN CARAVAN NEEDS DESYNC FIX
     //======================================================================================
@@ -1049,7 +1070,7 @@ namespace Multiplayer.Client
     //======================================================================================
     // END STORYTELLER DESYNC FIX
     //======================================================================================
-
+    /*
     //======================================================================================
     // BEGIN GAME CONDITION DESYNC FIX
     //======================================================================================
@@ -1086,5 +1107,155 @@ namespace Multiplayer.Client
     //======================================================================================
     // END GAME CONDITION DESYNC FIX
     //======================================================================================
+    */
 
+    //======================================================================================
+    // BEGIN DETERMINISTIC MAP TICKER FIXES (Replaces old DeterministicMapTickers patch)
+    //======================================================================================
+
+    /// <summary>
+    /// The following patches ensure that all periodic map-level systems that use randomness
+    /// are deterministically seeded with the map's async tick count. Each system gets its
+    /// own patch for maximum stability and to prevent Push/Pop mismatches.
+    /// </summary>
+
+    [HarmonyPatch(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick))]
+    public static class WildPlantSpawner_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick))]
+    public static class WildAnimalSpawner_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick))]
+    public static class SteadyEnvironmentEffects_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick))]
+    public static class WeatherDecider_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick))]
+    public static class PassingShipManager_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick))]
+    public static class UndercaveMapComponent_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(LordManager), nameof(LordManager.LordManagerTick))]
+    public static class LordManager_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick))]
+    public static class FireWatcher_Tick_Sync
+    {
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    [HarmonyPatch(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick))]
+    public static class GameConditionManager_Tick_Sync
+    {
+        // This patch correctly accesses the `ownerMap` field.
+        static void Prefix(Map ___ownerMap)
+        {
+            if (Multiplayer.Client != null && ___ownerMap?.AsyncTime() != null)
+                Rand.PushState(___ownerMap.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    //======================================================================================
+    // END DETERMINISTIC MAP TICKER FIXES
+    //======================================================================================
 }
