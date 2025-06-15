@@ -3,6 +3,7 @@ using Multiplayer.Common;
 using System.Net;
 using System.Net.Sockets;
 using Multiplayer.Client.Util;
+using Ionic.Zlib;
 
 namespace Multiplayer.Client.Networking
 {
@@ -34,7 +35,8 @@ namespace Multiplayer.Client.Networking
 
         public void OnPeerDisconnected(NetPeer peer, DisconnectInfo info)
         {
-            MpLog.Log($"[DBG] PeerDisconnected – raw reason {info.Reason}, addBytes {info.AdditionalData?.Size ?? 0}");
+            int addLen = info.AdditionalData.IsNull ? 0 : info.AdditionalData.GetRemainingBytes().Length;
+            MpLog.Log($"[DBG] PeerDisconnected – raw reason={info.Reason}, addBytes={addLen}");
             MpDisconnectReason reason;
             byte[] data;
 
