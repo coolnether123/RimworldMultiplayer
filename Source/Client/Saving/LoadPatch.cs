@@ -1,7 +1,9 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Multiplayer.Client.Saving;
 using Verse;
 using Verse.Profile;
+using Multiplayer.Client.AsyncTime;
+using System.Linq;
 
 namespace Multiplayer.Client
 {
@@ -44,10 +46,10 @@ namespace Multiplayer.Client
             {
                 LongEventHandler.ExecuteWhenFinished(() =>
                 {
-                    // Inits all caches
-                    foreach (ITickable tickable in TickPatch.AllTickables)
-                        tickable.Tick();
+                    Log.Message("Multiplayer: Executing post-load TickPatch.Reset()");
+                    TickPatch.Reset();
 
+                    // world graphics if a mapless scenario is loaded.
                     if (!Current.Game.Maps.Any())
                     {
                         MemoryUtility.UnloadUnusedUnityAssets();

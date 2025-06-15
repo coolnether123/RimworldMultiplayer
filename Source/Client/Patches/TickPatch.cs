@@ -59,6 +59,23 @@ namespace Multiplayer.Client
         [TweakValue("Multiplayer")]
         public static bool doSimulate = true;
 
+        public static void RunAgnosticUpdate()
+        {
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Start();
+
+            // This sequence is now the single source of truth for running a game update.
+            RunCmds();
+            if (LongEventHandler.eventQueue.Count == 0)
+            {
+                DoUpdate(out var worked);
+                if (worked) workTicks++;
+            }
+
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Pause();
+        }
+
         static bool Prefix()
         {
             if (Multiplayer.Client == null) return true;
@@ -117,6 +134,8 @@ namespace Multiplayer.Client
 
             if (MpVersion.IsDebug)
                 SimpleProfiler.Pause();
+
+            RunAgnosticUpdate();
 
             CheckFinishSimulating();
 
