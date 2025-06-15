@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using LiteNetLib;
 
@@ -34,6 +34,15 @@ namespace Multiplayer.Common
             peer.Tag = conn;
 
             var player = server.playerManager.OnConnected(conn);
+
+            // If the game isn’t ready yet, close the peer with a proper payload
+            // so the client sees “ServerStarting” instead of a generic failure.
+            if (!server.FullyStarted)
+            {
+                conn.Close(MpDisconnectReason.ServerStarting);
+                    return;
+            }
+
             if (arbiter)
             {
                 player.type = PlayerType.Arbiter;
