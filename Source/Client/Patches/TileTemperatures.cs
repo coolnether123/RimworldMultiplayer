@@ -4,49 +4,80 @@ using RimWorld.Planet;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnityEngine.UIElements;
 using Verse;
+
 
 namespace Multiplayer.Client
 {
+    /// <summary>
+    /// This static class holds a temporary override for the game's tick count.
+    /// This allows us to make methods that rely on Find.TickManager.TicksGame use
+    /// a specific map's async time instead of the global one.
+    /// </summary>
+    public static class TickManager_Patch_State
+    {
+        public static int? TicksGame_Agnostic = null;
+    }
+
+    /// <summary>
+    /// This patch intercepts calls to get the current game tick. If our override is set,
+    /// it returns the override value (the map's specific tick count).
+    /// </summary>
+    [HarmonyPatch(typeof(TickManager), nameof(TickManager.TicksGame), MethodType.Getter)]
+    static class TickManager_TicksGame_Patch
+    {
+        static void Postfix(ref int __result)
+        {
+            if (TickManager_Patch_State.TicksGame_Agnostic.HasValue)
+            {
+                __result = TickManager_Patch_State.TicksGame_Agnostic.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// This patch does the same as above for TicksAbs, which is also used in temperature calculations.
+    /// For the purpose of temperature, using the map's current tick is sufficient and deterministic.
+    /// </summary>
+    [HarmonyPatch(typeof(TickManager), nameof(TickManager.TicksAbs), MethodType.Getter)]
+    static class TickManager_TicksAbs_Patch
+    {
+        static void Postfix(ref int __result)
+        {
+            if (TickManager_Patch_State.TicksGame_Agnostic.HasValue)
+            {
+                __result = TickManager_Patch_State.TicksGame_Agnostic.Value;
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(TileTemperaturesComp.CachedTileTemperatureData))]
     [HarmonyPatch(nameof(TileTemperaturesComp.CachedTileTemperatureData.CheckCache))]
     static class CachedTileTemperatureData_CheckCache
     {
         /// <summary>
-        /// This prefix now returns a bool to control whether the original method runs.
-        /// It handles the critical edge case of map generation.
+        /// Before the temperature cache is checked, we set our tick override if needed.
         /// </summary>
-        static bool Prefix(PlanetTile ___tile, ref TimeSnapshot? __state)
+        static void Prefix(Map ___map)
         {
-            if (Multiplayer.Client == null)
-                return true; // Let vanilla run if not in multiplayer
+            if (Multiplayer.Client == null) return;
 
-            Map map = Current.Game.FindMap(___tile.tileId);
-            if (map == null)
-                return true; // No map exists, let vanilla handle it (likely for world view)
-
-            // This is the key change. If AsyncTime is null, the map is being generated.
-            // It is SAFE to let the vanilla method run because the entire MapGenerator
-            // process is already inside a deterministically seeded block.
-            if (map.AsyncTime() == null)
+            // If the map has a valid async time component, set the override.
+            if (___map.AsyncTime() != null)
             {
-                return true; // Let vanilla code run within the seeded map-gen context
+                TickManager_Patch_State.TicksGame_Agnostic = ___map.AsyncTime().mapTicks;
             }
-
-            // If the map and its components are fully loaded, we use our multiplayer logic.
-            __state = TimeSnapshot.GetAndSetFromMap(map);
-
-            // Return false to prevent the original (potentially unseeded) method from running.
-            return false;
         }
 
         /// <summary>
-        /// The postfix remains the same, restoring the time snapshot if one was taken.
+        /// After the cache check is complete, we clear our override to restore normal game behavior.
+        /// A Finalizer is used to guarantee this runs even if an error occurs.
         /// </summary>
-        static void Postfix(TimeSnapshot? __state)
+        static void Finalizer()
         {
-            // This only runs if the prefix returned false, as it's paired with __state.
-            __state?.Set();
+            // Clear the override so the rest of the game uses the real TicksGame.
+            TickManager_Patch_State.TicksGame_Agnostic = null;
         }
     }
 
