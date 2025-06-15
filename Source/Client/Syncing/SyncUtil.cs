@@ -81,7 +81,10 @@ namespace Multiplayer.Client
 
             try
             {
+                Log.Message("Makes it here #1");
                 handler.Handle(data);
+                Log.Message("Makes it here #2");
+
             }
             finally
             {
