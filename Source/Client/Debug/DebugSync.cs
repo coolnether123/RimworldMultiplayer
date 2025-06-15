@@ -58,7 +58,7 @@ namespace Multiplayer.Client
             {
                 var obj = Find.WorldObjects.AllWorldObjects.FirstOrDefault(w => w.ID == selectedId);
                 if (obj != null)
-                    Find.WorldSelector.selected.Add(obj);
+                    Find.WorldSelector.Select(obj);
             }
 
             Log.Message($"Debug tool {source} ({cursorX}, {cursorZ}) {currentHash} {path}");

@@ -51,7 +51,7 @@ namespace Multiplayer.Client
             Log.Message("Made it here #3");
 
             List<object> prevSelected = Find.Selector.selected;
-            List<WorldObject> prevWorldSelected = Find.WorldSelector.selected;
+            List<WorldObject> prevWorldSelected = Find.WorldSelector.SelectedObjects;
             Log.Message("Made it here #4");
 
             bool shouldQueue = false;
@@ -74,7 +74,12 @@ namespace Multiplayer.Client
                 {
                     List<ISelectable> selected = SyncSerialization.ReadSync<List<ISelectable>>(data);
                     //Find.WorldSelector.selected = selected.Cast<WorldObject>().AllNotNull().ToList();
-                    AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
+                    foreach (var item in selected.Cast<WorldObject>().AllNotNull().ToList())
+                    {
+                        Find.WorldSelector.Select(item);
+                    }
+ //                   AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
+
                 }
 
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
@@ -91,6 +96,7 @@ namespace Multiplayer.Client
             }
             finally
             {
+                Log.Message(Find.WorldSelector.selected == null ? "null" : Find.WorldSelector.selected.ToString());
                 Log.Message("Makes it here #6");
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
@@ -98,9 +104,19 @@ namespace Multiplayer.Client
                 Find.Selector.selected = prevSelected;
                 Log.Message("Makes it here #8");
                 //Find.WorldSelector.selected = prevWorldSelected;
-                AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, prevWorldSelected);
+                Log.Message(prevWorldSelected == null ? "null" : prevWorldSelected.ToString());
+
                 Log.Message("Makes it here #9");
-            }
+                foreach (var item in prevWorldSelected)
+                {
+                    Find.WorldSelector.Select(item);
+                }
+                Log.Message("Makes it here #10");
+
+/*
+                var prop = AccessTools.Property(typeof(WorldSelector), "selected");
+                    prop.SetValue(Find.WorldSelector.selected, prevWorldSelected); //prevWorldSelected is null
+            */}
 
             return handler;
         }
@@ -122,7 +138,7 @@ namespace Multiplayer.Client
                 SyncSerialization.WriteSync(data, Find.Selector.selected.Cast<ISelectable>().ToList());
 
             if (handler.context.HasFlag(SyncContext.WorldSelected))
-                SyncSerialization.WriteSync(data, Find.WorldSelector.selected.Cast<ISelectable>().ToList());
+                SyncSerialization.WriteSync(data, Find.WorldSelector.SelectedObjects.Cast<ISelectable>().ToList());
 
             if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
                 data.WriteBool(KeyBindingDefOf.QueueOrder.IsDownEvent);
