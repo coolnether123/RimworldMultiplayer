@@ -141,7 +141,7 @@ namespace Multiplayer.Client
                 Application.OpenURL(discordLink);
 
             x += 10;
-            Widgets.Label(new Rect(x, 0, 400, 24), "Note: Multiplayer for 1.5 is still in testing phase.");
+            Widgets.Label(new Rect(x, 0, 400, 24), "Note: Multiplayer for 1.6 is still in testing phase.");
 
             const string v15Notice =
                 """
