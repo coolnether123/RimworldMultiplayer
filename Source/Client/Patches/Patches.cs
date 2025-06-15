@@ -52,7 +52,7 @@ namespace Multiplayer.Client
     }
 
     [HarmonyPatch(typeof(Dialog_BillConfig), MethodType.Constructor)]
-    [HarmonyPatch(new[] {typeof(Bill_Production), typeof(IntVec3)})]
+    [HarmonyPatch(new[] { typeof(Bill_Production), typeof(IntVec3) })]
     public static class DialogPatch
     {
         static void Postfix(Dialog_BillConfig __instance)
@@ -405,10 +405,12 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null) return true;
 
-            foreach(var part in Find.QuestManager.QuestsListForReading.SelectMany(q => q.parts).OfType<QuestPart_Choice>()) {
+            foreach (var part in Find.QuestManager.QuestsListForReading.SelectMany(q => q.parts).OfType<QuestPart_Choice>())
+            {
                 int index = part.choices.IndexOf(___localChoice);
 
-                if (index >= 0) {
+                if (index >= 0)
+                {
                     Choose(part, index);
                     return false;
                 }
@@ -427,22 +429,26 @@ namespace Multiplayer.Client
     }
 
     [HarmonyPatch(typeof(MoteMaker), nameof(MoteMaker.MakeStaticMote))]
-    [HarmonyPatch(new[] {typeof(Vector3), typeof(Map), typeof(ThingDef), typeof(float), typeof(bool), typeof(float)})]
+    [HarmonyPatch(new[] { typeof(Vector3), typeof(Map), typeof(ThingDef), typeof(float), typeof(bool), typeof(float) })]
     static class FixNullMotes
     {
         static Dictionary<Type, Mote> cache = new();
 
-        static void Postfix(ThingDef moteDef, ref Mote __result) {
+        static void Postfix(ThingDef moteDef, ref Mote __result)
+        {
             if (__result != null) return;
 
             if (moteDef.mote.needsMaintenance) return;
 
             var thingClass = moteDef.thingClass;
 
-            if (cache.TryGetValue(thingClass, out Mote value)) {
+            if (cache.TryGetValue(thingClass, out Mote value))
+            {
                 __result = value;
-            } else {
-                __result = (Mote) Activator.CreateInstance(thingClass);
+            }
+            else
+            {
+                __result = (Mote)Activator.CreateInstance(thingClass);
 
                 cache.Add(thingClass, __result);
             }
@@ -498,12 +504,15 @@ namespace Multiplayer.Client
         }
     }
 
+
     [HarmonyPatch(typeof(Dialog_NodeTree), nameof(Dialog_NodeTree.PostClose))]
     static class NodeTreeDialogMarkClosed
     {
         // Set the dialog as closed in here as well just in case
         static void Prefix() => SyncUtil.isDialogNodeTreeOpen = false;
     }
+
+
 
     [HarmonyPatch]
     static class SetGodModePatch
@@ -590,4 +599,158 @@ namespace Multiplayer.Client
 
         static void Finalizer() => DrawPosPatch.returnTruePosition = false;
     }
+
+    //======================================================================================
+    // BEGIN DESYNC FIX: DETERMINISTIC MAP TICKERS
+    //======================================================================================
+
+    // COMMENT: The patches below (WildAnimalSpawnerTickTraceIgnore, etc.) are bandages that only hide
+    // the desync error message but don't fix the underlying problem. They are being replaced by the
+    // DeterministicMapTickers patch, which fixes the desync at its source.
+    /*
+    [HarmonyPatch(typeof(WildAnimalSpawner), "WildAnimalSpawnerTick")]
+    public static class WildAnimalSpawnerTickTraceIgnore
+    {
+        static bool Prefix() => !Multiplayer.InInterface;
+    }
+
+    [HarmonyPatch(typeof(WildPlantSpawner), "WildPlantSpawnerTick")]
+    public static class WildPlantSpawnerTickTraceIgnore
+    {
+        static bool Prefix() => !Multiplayer.InInterface;
+    }
+
+    [HarmonyPatch(typeof(SteadyEnvironmentEffects), "SteadyEnvironmentEffectsTick")]
+    public static class SteadyEnvironmentEffectsTickTraceIgnore
+    {
+        static bool Prefix() => !Multiplayer.InInterface;
+    }
+    */
+
+    /// <summary>
+    /// This patch fixes a common source of desyncs in RimWorld 1.6. Several background
+    /// map processes use the random number generator (Rand) every tick. Without a
+    /// consistent seed, each player's game generates different random outcomes, leading to a desync.
+    ///
+    /// This patch targets the main Tick methods for these systems and wraps them in a seeded
+    /// random state block. This guarantees that for any given map tick, every player's
+    /// game will produce the exact same "random" results for weather, animal spawning, etc.
+    /// </summary>
+    [HarmonyPatch]
+    static class DeterministicMapTickers
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            // These methods all run periodically on the map and use Rand, causing desyncs.
+            yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
+            yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
+            yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
+            yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
+        }
+
+        /// <summary>
+        /// Before any of the targeted methods run, we push a new state to the random number generator.
+        /// We seed it with the map's current simulation tick count.
+        /// </summary>
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            {
+                Rand.PushState(___map.AsyncTime().mapTicks);
+            }
+        }
+
+        /// <summary>
+        /// After the method finishes (or if it crashes), we pop the state.
+        /// This restores the RNG to its previous state, preventing our seeded state
+        /// from affecting other parts of the game.
+        /// </summary>
+        static void Finalizer(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END DESYNC FIX
+    //======================================================================================
+
+    //======================================================================================
+    // BEGIN CARAVAN AND CAMP SYNC FIXES
+    //======================================================================================
+
+    /// <summary>
+    /// This patch intercepts the caravan's "DEV: Teleport to destination" gizmo.
+    /// Instead of letting it execute its logic locally, we replace its action
+    /// with one that calls our new `SyncMethods.CaravanTeleport`.
+    /// </summary>
+    [HarmonyPatch(typeof(Caravan), nameof(Caravan.GetGizmos))]
+    static class SyncCaravanDevTeleportPatch
+    {
+        static IEnumerable<Gizmo> Postfix(IEnumerable<Gizmo> __result, Caravan __instance)
+        {
+            foreach (var gizmo in __result)
+            {
+                // We identify the dev gizmo by its unique label.
+                if (gizmo is Command_Action cmd && cmd.defaultLabel == "DEV: Teleport to destination")
+                {
+                    // This is the new, synced action.
+                    cmd.action = () =>
+                    {
+                        // The targeting UI is a local effect and is safe to call.
+                        Find.WorldTargeter.BeginTargeting(
+                            (GlobalTargetInfo targetInfo) => // This is the callback after a tile is selected.
+                            {
+                                if (!targetInfo.IsValid) return true; // Abort if invalid target.
+
+                                // Instead of teleporting locally, we call our new SyncMethod.
+                                // The server will distribute this command to all players.
+                                SyncMethods.CaravanTeleport(__instance, targetInfo.Tile);
+                                return true; // Return true to close the targeting interface.
+                            },
+                            canTargetTiles: true
+                        );
+                    };
+
+                    // Optional: Add a note to the description for clarity during debugging.
+                    cmd.defaultDesc += "\n\n(Multiplayer: Synced for all players)";
+                }
+
+                yield return gizmo;
+            }
+        }
+    }
+
+    /// <summary>
+    /// This patch intercepts the final step of abandoning a settlement or camp.
+    /// Instead of running the local abandonment logic, it calls our new `SyncMethods.SyncedAbandonSettlement`.
+    /// This is a robust way to sync the action, as it captures it regardless of the UI flow (e.g., confirmation dialogs).
+    /// </summary>
+    [HarmonyPatch(typeof(SettlementAbandonUtility), "Abandon", new Type[] { typeof(MapParent) })]
+    static class SettlementAbandonUtility_Abandon_Sync
+    {
+        static bool Prefix(MapParent settlement)
+        {
+            // If we are in a multiplayer game...
+            if (Multiplayer.Client != null)
+            {
+                // ...call our synced method instead of the original logic.
+                SyncMethods.SyncedAbandonSettlement(settlement);
+
+                // ...and prevent the original (unsynced) method from running.
+                return false;
+            }
+
+            // If not in multiplayer, let the original method run as usual.
+            return true;
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN AND CAMP SYNC FIXES
+    //======================================================================================
+
 }

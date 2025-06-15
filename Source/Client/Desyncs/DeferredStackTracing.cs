@@ -105,7 +105,7 @@ namespace Multiplayer.Client.Desyncs
         }
     }
 
-    [HarmonyPatch(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick))]
+    /*[HarmonyPatch(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick))]
     static class WildAnimalSpawnerTickTraceIgnore
     {
         static void Prefix() => DeferredStackTracing.ignoreTraces++;
@@ -126,17 +126,54 @@ namespace Multiplayer.Client.Desyncs
         static void Finalizer() => DeferredStackTracing.ignoreTraces--;
     }
 
-    /*[HarmonyPatch(typeof(StoreUtility), nameof(StoreUtility.TryFindBestBetterStoreCellForWorker))]
+    [HarmonyPatch(typeof(StoreUtility), nameof(StoreUtility.TryFindBestBetterStoreCellForWorker))]
     static class FindBestStorageCellTraceIgnore
     {
         static void Prefix() => DeferredStackTracing.ignoreTraces++;
         static void Finalizer() => DeferredStackTracing.ignoreTraces--;
-    }*/
+    }
 
     [HarmonyPatch(typeof(IntermittentSteamSprayer), nameof(IntermittentSteamSprayer.SteamSprayerTick))]
     static class SteamSprayerTickTraceIgnore
     {
         static void Prefix() => DeferredStackTracing.ignoreTraces++;
         static void Finalizer() => DeferredStackTracing.ignoreTraces--;
+    }*/
+    [HarmonyPatch]
+    static class DeterministicMapTickers
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            // These methods all run periodically on the map and use Rand, causing desyncs.
+            yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
+            yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
+            yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
+            yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
+        }
+
+        /// <summary>
+        /// Before any of the targeted methods run, we push a new state to the random number generator.
+        /// We seed it with the map's current simulation tick count.
+        /// </summary>
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            {
+                Rand.PushState(___map.AsyncTime().mapTicks);
+            }
+        }
+
+        /// <summary>
+        /// After the method finishes (or if it crashes), we pop the state.
+        /// This restores the RNG to its previous state, preventing our seeded state
+        /// from affecting other parts of the game.
+        /// </summary>
+        static void Finalizer(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            {
+                Rand.PopState();
+            }
+        }
     }
 }

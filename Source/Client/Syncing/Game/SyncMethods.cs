@@ -14,6 +14,47 @@ namespace Multiplayer.Client
 {
     public static class SyncMethods
     {
+
+        #region WORLD OBJECT AND CARAVAN ACTIONS
+
+        /// <summary>
+        /// This sync method handles the "DEV: Teleport to destination" action for caravans.
+        /// It takes the caravan and the target tile, and directly sets the caravan's position.
+        /// This ensures the teleportation is replicated across all clients.
+        /// </summary>
+        /// <param name="caravan">The caravan to teleport.</param>
+        /// <param name="tile">The destination tile ID.</param>
+        [SyncMethod]
+        public static void CaravanTeleport(Caravan caravan, int tile)
+        {
+            // A null check is good practice in case the caravan is destroyed
+            // between the action being fired and the command being executed.
+            if (caravan == null) return;
+
+            // This is the core logic from the original dev command.
+            caravan.Tile = tile;
+            caravan.Notify_Teleported(); // This forces the caravan's pathfinder and graphics to update.
+        }
+
+        /// <summary>
+        /// This sync method handles abandoning any MapParent, which includes both player settlements and temporary camps.
+        /// It wraps the original vanilla logic in a synced call.
+        /// </summary>
+        /// <param name="settlement">The settlement or camp to abandon.</param>
+        [SyncMethod]
+        public static void SyncedAbandonSettlement(MapParent settlement)
+        {
+            // Null/destroyed check prevents errors if the object was already removed by another action.
+            if (settlement == null || settlement.Destroyed) return;
+
+            // This is the original logic from SettlementAbandonUtility.Abandon.
+            // By running it here, we ensure it's synced for all players.
+            settlement.Abandon(false);
+            Find.GameEnder.CheckOrUpdateGameOver();
+        }
+
+        #endregion
+
         static SyncField SyncTimetable;
 
         public static void Init()
