@@ -644,18 +644,13 @@ namespace Multiplayer.Client
         static IEnumerable<MethodBase> TargetMethods()
         {
             // These methods all run periodically on a specific map and use Rand.
-            // We add any new discovered source of desync to this list.
             yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
             yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
             yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
             yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
             yield return AccessTools.Method(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick));
             yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
-
-            // Newly added tickers based on latest desync logs:
-            yield return AccessTools.Method(typeof(WeatherManager), nameof(WeatherManager.WeatherManagerTick));
             yield return AccessTools.Method(typeof(LordManager), nameof(LordManager.LordManagerTick));
-            yield return AccessTools.Method(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick));
             yield return AccessTools.Method(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick));
         }
 
@@ -1055,5 +1050,41 @@ namespace Multiplayer.Client
     // END STORYTELLER DESYNC FIX
     //======================================================================================
 
+    //======================================================================================
+    // BEGIN GAME CONDITION DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by the map-level GameConditionManager.
+    /// It uses Rand to determine event durations. This patch seeds its tick with the
+    /// map's async time to ensure deterministic results.
+    /// It requires a separate patch because its map field is named `ownerMap`, not `map`.
+    /// </summary>
+    [HarmonyPatch(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick))]
+    public static class GameConditionManager_Tick_Sync
+    {
+        /// <summary>
+        /// Harmony is instructed to find the field named `ownerMap` and pass it as the `map` parameter.
+        /// </summary>
+        static void Prefix(Map ___ownerMap)
+        {
+            if (Multiplayer.Client != null && ___ownerMap?.AsyncTime() != null)
+            {
+                Rand.PushState(___ownerMap.AsyncTime().mapTicks);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END GAME CONDITION DESYNC FIX
+    //======================================================================================
 
 }
