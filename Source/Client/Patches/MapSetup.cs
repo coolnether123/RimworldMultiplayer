@@ -89,7 +89,7 @@ namespace Multiplayer.Client
             if (__instance.WeatherCommonalities.EnumerableNullOrEmpty())
             {
                 // This is the problematic situation. Log it and apply a fix.
-                Log.Warning("Multiplayer: Biome has no weather commonalities. Forcing Clear weather to prevent a crash.");
+                Log.Warning("Multiplayer: Biome has no weather commonalities. Forcing Clear weather to prevent a crash. THIS IS AN ISSUE. IT’S FIXED FOR NOW BUT STILL NEEDS ATTENTION");
 
                 // Manually set a safe default weather (Clear) and initialize weather manager state.
                 // This code is a safe subset of the original method.
