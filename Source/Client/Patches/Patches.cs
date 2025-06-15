@@ -1010,6 +1010,11 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
             yield return AccessTools.Method(typeof(QuestManager), nameof(QuestManager.QuestManagerTick));
             yield return AccessTools.Method(typeof(WorldObjectsHolder), nameof(WorldObjectsHolder.WorldObjectsHolderTick));
+
+            yield return AccessTools.Method(typeof(FactionManager), nameof(FactionManager.FactionManagerTick));
+            yield return AccessTools.Method(typeof(WorldPawns), nameof(WorldPawns.WorldPawnsTick));
+            yield return AccessTools.Method(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick));
+
         }
 
         /// <summary>
