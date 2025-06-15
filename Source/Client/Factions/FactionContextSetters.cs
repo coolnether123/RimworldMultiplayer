@@ -62,29 +62,57 @@ static class SetupCamp_StoreFactionByTile_Patch
     }
 }
 
+/// <summary>
+/// This patch intercepts the "Setup Camp" command action. Instead of letting it run its
+/// local, unsynced logic, it replaces the action with a call to our new SyncedSetupCamp method.
+/// </summary>
+[HarmonyPatch(typeof(SettleInEmptyTileUtility), nameof(SettleInEmptyTileUtility.SetupCamp))]
+public static class SetupCamp_SyncGizmo_Patch
+{
+    static void Postfix(Command __result, Caravan caravan)
+    {
+        // Ensure we are only modifying a Command_Action, as expected.
+        if (__result is Command_Action cmd)
+        {
+            // Store the original action for debugging or reference if needed.
+            var originalAction = cmd.action;
+
+            // Replace the original action with a new one that calls our SyncMethod.
+            cmd.action = () =>
+            {
+                // Before queuing the map generation, store the caravan's faction
+                // context in our thread-safe dictionary, keyed by the tile ID.
+                TileFactionContext.SetFactionForTile(caravan.Tile, caravan.Faction);
+
+                // Now call the synced method that all clients will execute.
+                SyncMethods.SyncedSetupCamp(caravan);
+            };
+        }
+    }
+}
+
 [HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new[] { typeof(PlanetTile), typeof(IntVec3), typeof(WorldObjectDef), typeof(IEnumerable<GenStepWithParams>), typeof(bool) })]
 static class MapGenFactionPatch
 {
+    /// <summary>
+    /// The Prefix method signature now correctly accepts a PlanetTile object as its first parameter.
+    /// We use its .tileId property for lookups.
+    /// </summary>
     static void Prefix(PlanetTile tile)
     {
-        Faction factionToSet = null;
+        // Try to get a faction from our thread-safe context using the integer tile ID.
+        var faction = TileFactionContext.GetFactionForTile(tile.tileId);
 
-        // NEW: Check if we have a stored faction for this tile
-        factionToSet = TileFactionContext.GetFactionForTile(tile.tileId);
-
-        if (factionToSet == null)
+        // If not found (e.g., not a caravan camp), fall back to the faction of the MapParent at the tile.
+        if (faction == null)
         {
-            // FALLBACK: Use the old logic for all other cases
-            var mapParent = Find.WorldObjects.MapParentAt(tile);
-            factionToSet = mapParent?.Faction;
+            // Use tile.tileId here to correctly call MapParentAt.
+            var mapParent = Find.WorldObjects.MapParentAt(tile.tileId);
+            faction = mapParent?.Faction;
         }
 
-        if (factionToSet == null && Multiplayer.Client != null)
-        {
-            Log.Warning($"Couldn't set the faction context for map gen at {tile.tileId}: no world object and no stored faction.");
-        }
-
-        FactionContext.Push(factionToSet);
+        // Push the determined faction to the context stack.
+        FactionContext.Push(faction);
     }
 
     static void Finalizer()

@@ -55,6 +55,39 @@ namespace Multiplayer.Client
 
         #endregion
 
+        [SyncMethod]
+        public static void SyncedSetupCamp(Caravan caravan)
+        {
+            // A null check is good practice
+            if (caravan == null) return;
+
+            // The LongEventHandler queues the map generation on a background thread.
+            // This is the original logic from the "Setup Camp" gizmo.
+            LongEventHandler.QueueLongEvent(() =>
+            {
+                // Generate the map for the camp
+                Map map = GetOrGenerateMapUtility.GetOrGenerateMap(caravan.Tile, Find.World.info.initialMapSize, WorldObjectDefOf.Camp);
+
+                // This is a crucial step that was missing. We must explicitly set the
+                // faction of the new MapParent (the Camp) to the caravan's faction.
+                map.Parent.SetFaction(caravan.Faction);
+
+                Pawn target = caravan.PawnsListForReading[0];
+
+                // Enter the newly generated map
+                CaravanEnterMapUtility.Enter(caravan, map, CaravanEnterMode.Center, extraCellValidator: (x => x.GetRoom(map).CellCount >= 600));
+
+                // Start the raid countdown timer
+                map.Parent.GetComponent<TimedDetectionRaids>()?.StartDetectionCountdown(240000, 60000);
+
+                // If this command was issued by the current player, jump their camera to the new map.
+                if (TickPatch.currentExecutingCmdIssuedBySelf)
+                {
+                    CameraJumper.TryJump((GlobalTargetInfo)(Thing)target);
+                }
+            }, "GeneratingMap", true, GameAndMapInitExceptionHandlers.ErrorWhileGeneratingMap);
+        }
+
         static SyncField SyncTimetable;
 
         public static void Init()
