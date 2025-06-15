@@ -34,8 +34,10 @@ namespace Multiplayer.Client
 
         public static SyncHandler HandleCmd(ByteReader data)
         {
+            Log.Message("Made it here #1");
             int syncId = data.ReadInt32();
             SyncHandler handler;
+            Log.Message("Made it here #2");
 
             try
             {
@@ -46,9 +48,11 @@ namespace Multiplayer.Client
                 Log.Error($"Error: invalid syncId {syncId}/{Sync.handlers.Count}, this implies mismatched mods, ensure your versions match! Stacktrace follows.");
                 throw;
             }
+            Log.Message("Made it here #3");
 
             List<object> prevSelected = Find.Selector.selected;
             List<WorldObject> prevWorldSelected = Find.WorldSelector.selected;
+            Log.Message("Made it here #4");
 
             bool shouldQueue = false;
 
@@ -76,6 +80,7 @@ namespace Multiplayer.Client
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
                     shouldQueue = data.ReadBool();
             }
+            Log.Message("Made it here #5");
 
             KeyIsDownPatch.shouldQueue = shouldQueue;
 
@@ -86,15 +91,15 @@ namespace Multiplayer.Client
             }
             finally
             {
-                Log.Message("Makes it here #1");
+                Log.Message("Makes it here #6");
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
-                Log.Message("Makes it here #2");
+                Log.Message("Makes it here #7");
                 Find.Selector.selected = prevSelected;
-                Log.Message("Makes it here #3");
+                Log.Message("Makes it here #8");
                 //Find.WorldSelector.selected = prevWorldSelected;
                 AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, prevWorldSelected);
-                Log.Message("Makes it here #4");
+                Log.Message("Makes it here #9");
             }
 
             return handler;
