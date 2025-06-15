@@ -34,10 +34,10 @@ namespace Multiplayer.Client
 
         public static SyncHandler HandleCmd(ByteReader data)
         {
-            Log.Message("Made it here #1");
+            //Log.Message("Made it here #1");
             int syncId = data.ReadInt32();
             SyncHandler handler;
-            Log.Message("Made it here #2");
+           //Log.Message("Made it here #2");
 
             try
             {
@@ -48,11 +48,11 @@ namespace Multiplayer.Client
                 Log.Error($"Error: invalid syncId {syncId}/{Sync.handlers.Count}, this implies mismatched mods, ensure your versions match! Stacktrace follows.");
                 throw;
             }
-            Log.Message("Made it here #3");
+            //Log.Message("Made it here #3");
 
             List<object> prevSelected = Find.Selector.selected;
             List<WorldObject> prevWorldSelected = Find.WorldSelector.SelectedObjects;
-            Log.Message("Made it here #4");
+            //Log.Message("Made it here #4");
 
             bool shouldQueue = false;
 
@@ -85,7 +85,7 @@ namespace Multiplayer.Client
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
                     shouldQueue = data.ReadBool();
             }
-            Log.Message("Made it here #5");
+            //Log.Message("Made it here #5");
 
             KeyIsDownPatch.shouldQueue = shouldQueue;
 
@@ -97,21 +97,21 @@ namespace Multiplayer.Client
             finally
             {
                 Log.Message(Find.WorldSelector.selected == null ? "null" : Find.WorldSelector.selected.ToString());
-                Log.Message("Makes it here #6");
+                //Log.Message("Makes it here #6");
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
-                Log.Message("Makes it here #7");
+                //Log.Message("Makes it here #7");
                 Find.Selector.selected = prevSelected;
-                Log.Message("Makes it here #8");
+                //Log.Message("Makes it here #8");
                 //Find.WorldSelector.selected = prevWorldSelected;
                 Log.Message(prevWorldSelected == null ? "null" : prevWorldSelected.ToString());
 
-                Log.Message("Makes it here #9");
+                //Log.Message("Makes it here #9");
                 foreach (var item in prevWorldSelected)
                 {
                     Find.WorldSelector.Select(item);
                 }
-                Log.Message("Makes it here #10");
+                //Log.Message("Makes it here #10");
 
 /*
                 var prop = AccessTools.Property(typeof(WorldSelector), "selected");
