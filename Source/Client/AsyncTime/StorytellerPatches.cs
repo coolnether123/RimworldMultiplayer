@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -34,26 +34,45 @@ public class StorytellerTargetsPatch
 {
     static void Postfix(List<IIncidentTarget> __result)
     {
-        if (Multiplayer.Client == null) return;
+        if (Multiplayer.Client == null || !Multiplayer.Ticking) return;
 
+        // If we are currently ticking a specific map, only that map is a valid incident target.
         if (Multiplayer.MapContext != null)
         {
             __result.Clear();
             __result.Add(Multiplayer.MapContext);
         }
+        // If we are currently ticking the world...
         else if (AsyncWorldTimeComp.tickingWorld)
         {
-            __result.Clear();
+            // ...then only world-level objects are valid targets.
+            // This filters out any player maps, which are handled by their own ticks.
+            __result.RemoveAll(target => target is Map);
 
+            // It's safer to add valid targets rather than clearing and re-adding.
+            // Let's ensure all player-controlled caravans are included.
             foreach (var caravan in Find.WorldObjects.Caravans)
-                if (caravan.IsPlayerControlled)
+            {
+                if (caravan.IsPlayerControlled && !__result.Contains(caravan))
+                {
                     __result.Add(caravan);
+                }
+            }
 
-            __result.Add(Find.World);
+            // Ensure the world itself is a target.
+            if (!__result.Contains(Find.World))
+            {
+                __result.Add(Find.World);
+            }
+        }
+        else
+        {
+            // If we are not ticking either the world or a map (e.g., in the UI),
+            // there should be no valid incident targets.
+            __result.Clear();
         }
     }
 }
-
 // The MP Mod's ticker calls Storyteller.StorytellerTick() on both the World and each Map, each tick
 // This patch aims to ensure each "spawn raid" Quest is only triggered once, to prevent 2x or 3x sized raids
 [HarmonyPatch(typeof(Quest), nameof(Quest.PartsListForReading), MethodType.Getter)]
