@@ -1009,6 +1009,7 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
             yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
             yield return AccessTools.Method(typeof(QuestManager), nameof(QuestManager.QuestManagerTick));
+            yield return AccessTools.Method(typeof(WorldObjectsHolder), nameof(WorldObjectsHolder.WorldObjectsHolderTick));
         }
 
         /// <summary>
