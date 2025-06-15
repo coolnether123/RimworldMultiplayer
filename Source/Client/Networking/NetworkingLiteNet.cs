@@ -34,6 +34,7 @@ namespace Multiplayer.Client.Networking
 
         public void OnPeerDisconnected(NetPeer peer, DisconnectInfo info)
         {
+            MpLog.Log($"[DBG] PeerDisconnected – raw reason {info.Reason}, addBytes {info.AdditionalData?.Size ?? 0}");
             MpDisconnectReason reason;
             byte[] data;
 

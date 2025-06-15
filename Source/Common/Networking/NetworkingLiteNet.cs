@@ -17,18 +17,22 @@ namespace Multiplayer.Common
 
         public void OnConnectionRequest(ConnectionRequest req)
         {
+            ServerLog.Log($"[DBG] ConnReq from {req.RemoteEndPoint.Address}");
             var result = server.playerManager.OnPreConnect(req.RemoteEndPoint.Address);
             if (result != null)
             {
+                ServerLog.Log($"[DBG] ConnReq rejected: {result}");
                 req.Reject(ConnectionBase.GetDisconnectBytes(result.Value));
                 return;
             }
 
+            ServerLog.Log("[DBG] ConnReq accepted");
             req.Accept();
         }
 
         public void OnPeerConnected(NetPeer peer)
         {
+            ServerLog.Log($"[DBG] Peer accepted: {peer.EndPoint}");
             ConnectionBase conn = new LiteNetConnection(peer);
             conn.ChangeState(ConnectionStateEnum.ServerJoining);
             peer.Tag = conn;
@@ -48,6 +52,7 @@ namespace Multiplayer.Common
                 player.type = PlayerType.Arbiter;
                 player.color = new ColorRGB(128, 128, 128);
             }
+            ServerLog.Log($"[DBG] State after accept: {conn.State}");
         }
 
         public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
