@@ -70,7 +70,7 @@ namespace Multiplayer.Client
                 {
                     List<ISelectable> selected = SyncSerialization.ReadSync<List<ISelectable>>(data);
                     //Find.WorldSelector.selected = selected.Cast<WorldObject>().AllNotNull().ToList();
-                    AccessTools.Property(typeof(WorldObject), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
+                    AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
                 }
 
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
