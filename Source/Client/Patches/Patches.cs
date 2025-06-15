@@ -971,6 +971,7 @@ namespace Multiplayer.Client
             if (Multiplayer.Client != null)
             {
                 // Seed with the world's tick count, as this is a world-level component.
+                // This ensures every client gets the same "random" temperature fluctuations.
                 Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
             }
         }
@@ -1003,13 +1004,16 @@ namespace Multiplayer.Client
     {
         static IEnumerable<MethodBase> TargetMethods()
         {
+            // These are all global, world-level tickers that use randomness.
+            // We seed all of them here to ensure deterministic outcomes.
             yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
             yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
+            yield return AccessTools.Method(typeof(QuestManager), nameof(QuestManager.QuestManagerTick));
         }
 
         /// <summary>
-        /// This prefix does not need any parameters from the original method. It seeds
-        /// the RNG with the global multiplayer world tick count.
+        /// This prefix seeds the RNG with the global multiplayer world tick count.
+        /// It runs before any of the targeted methods.
         /// </summary>
         static void Prefix()
         {
@@ -1019,6 +1023,9 @@ namespace Multiplayer.Client
             }
         }
 
+        /// <summary>
+        /// The finalizer ensures the RNG state is always restored.
+        /// </summary>
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
@@ -1031,4 +1038,6 @@ namespace Multiplayer.Client
     //======================================================================================
     // END STORYTELLER DESYNC FIX
     //======================================================================================
+
+
 }
