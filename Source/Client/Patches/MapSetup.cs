@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Emit;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
@@ -72,35 +73,79 @@ namespace Multiplayer.Client
     }
 
     /// <summary>
-    /// FIX 1: This patch prevents a crash during map generation if a biome has no weathers defined.
-    /// The vanilla code doesn't handle this and throws a NullReferenceException.
-    /// This prefix checks for an empty weather list, safely sets a default weather if needed,
-    /// and then skips the original problematic method.
+    /// This patch fixes a desync during initial map setup and prevents a crash if a biome
+    /// has no weathers defined.
+    /// The vanilla `StartInitialWeather` method uses Rand without a deterministic seed,
+    /// causing each client to generate different starting weather.
+    /// This patch wraps the entire method in a seeded random block to ensure every client
+    /// gets the same result.
     /// </summary>
     [HarmonyPatch(typeof(WeatherDecider), nameof(WeatherDecider.StartInitialWeather))]
     public static class WeatherDecider_StartInitialWeather_Patch
     {
-        static bool Prefix(WeatherDecider __instance, Map ___map)
+        /// <summary>
+        /// Using HarmonyPriority.First ensures our seeding runs before any other patches on this method.
+        /// </summary>
+        [HarmonyPriority(Priority.First)]
+        static void Prefix(Map ___map)
         {
-            // Check if the biome's weather list is null or empty.
-            if (__instance.WeatherCommonalities.EnumerableNullOrEmpty())
+            // Before the original method runs, push a new state to the random number generator,
+            // using the map's unique ID as a seed. This ID is deterministic for all players.
+            if (Multiplayer.Client != null)
             {
-                // This is the problematic situation. Log it and apply a fix.
-                Log.Warning("Multiplayer: Biome has no weather commonalities. Forcing Clear weather to prevent a crash. THIS IS AN ISSUE. IT’S FIXED FOR NOW BUT STILL NEEDS ATTENTION");
-
-                // Manually set a safe default weather (Clear) and initialize weather manager state.
-                ___map.weatherManager.curWeather = WeatherDefOf.Clear;
-                Traverse.Create(__instance).Field("curWeatherDuration").SetValue(10000); // Use traverse to set private field
-                ___map.weatherManager.lastWeather = ___map.weatherManager.curWeather;
-                ___map.weatherManager.curWeatherAge = 0;
-                ___map.weatherManager.ResetSkyTargetLerpCache();
-
-                // Return false to skip the original method and prevent the crash.
-                return false;
+                Rand.PushState(___map.uniqueID);
             }
+        }
 
-            // If weathers exist, let the original method run as intended.
-            return true;
+        /// <summary>
+        /// The original logic from your old patch is now integrated into a transpiler,
+        /// which is a more robust way to handle this kind of conditional logic change.
+        /// It checks if there are any weathers and, if not, skips to the end of the method.
+        /// </summary>
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator gen)
+        {
+            var original = instructions.ToList();
+            var label = gen.DefineLabel(); // A jump target for our new logic
+
+            // This transpiler will inject a check at the start of the method.
+            // It's equivalent to: if (this.WeatherCommonalities.Any()) { ... original code ... }
+
+            // Load `this` (the WeatherDecider instance)
+            yield return new CodeInstruction(OpCodes.Ldarg_0);
+            // Access its `WeatherCommonalities` property
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.PropertyGetter(typeof(WeatherDecider), nameof(WeatherDecider.WeatherCommonalities)));
+            // Check if the enumerable has any elements
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Enumerable), nameof(Enumerable.Any), new[] { typeof(WeatherCommonalityRecord) }));
+            // If it DOES have elements (is not empty), jump to the original code.
+            yield return new CodeInstruction(OpCodes.Brtrue_S, label);
+
+            // If the check was false (no weathers), this code runs:
+            // Set weather to Clear and return, skipping the original logic.
+            yield return new CodeInstruction(OpCodes.Ldarg_0); // this
+            yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(WeatherDecider), "map")); // this.map
+            yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(Map), nameof(Map.weatherManager))); // this.map.weatherManager
+            yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(WeatherDefOf), nameof(WeatherDefOf.Clear))); // WeatherDefOf.Clear
+            yield return new CodeInstruction(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(WeatherManager), nameof(WeatherManager.curWeather))); // .curWeather = ...
+            yield return new CodeInstruction(OpCodes.Ret); // return;
+
+            // This is the label where we jump to if weathers exist.
+            original.First().labels.Add(label);
+            foreach (var inst in original)
+            {
+                yield return inst;
+            }
+        }
+
+        /// <summary>
+        /// This finalizer will always run, ensuring we pop the random state
+        /// even if the original method has an error.
+        /// </summary>
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
         }
     }
 
