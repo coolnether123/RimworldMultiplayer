@@ -679,6 +679,53 @@ namespace Multiplayer.Client
     //======================================================================================
 
     //======================================================================================
+    // BEGIN CARAVAN FORAGING DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by caravan foraging. The vanilla game uses an unseeded
+    /// random number generator to determine the amount of foraged food, causing each client
+    /// to calculate a different amount and desynchronize.
+    /// This patch wraps the foraging tick logic in a seeded random state block, using the
+    /// caravan's unique ID as the seed. This ensures every client gets the exact same
+    /// "random" result for foraging on any given tick.
+    /// </summary>
+    [HarmonyPatch(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.ForageTrackerTickInterval))]
+    public static class Caravan_ForageTracker_Tick_Sync
+    {
+        /// <summary>
+        /// Before the foraging logic runs, we push a new state to the random number generator.
+        /// The state is seeded with the caravan's unique ID, which is deterministic.
+        /// We use a direct parameter reference `___caravan` for efficiency.
+        /// </summary>
+        static void Prefix(Caravan ___caravan)
+        {
+            if (Multiplayer.Client != null)
+            {
+                // Seed with the caravan's unique ID to ensure deterministic foraging results.
+                Rand.PushState(___caravan.ID);
+            }
+        }
+
+        /// <summary>
+        /// After the foraging logic has finished, we pop the state to restore the RNG.
+        /// This prevents our deterministic seed from affecting other parts of the game.
+        /// A finalizer is used to guarantee this runs even if the original method has an error.
+        /// </summary>
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN FORAGING DESYNC FIX
+    //======================================================================================
+
+    //======================================================================================
     // BEGIN CARAVAN AND CAMP SYNC FIXES
     //======================================================================================
 
