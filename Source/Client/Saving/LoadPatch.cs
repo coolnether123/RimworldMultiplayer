@@ -44,18 +44,7 @@ namespace Multiplayer.Client
 
             if (Multiplayer.Client != null)
             {
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    Log.Message("Multiplayer: Executing post-load TickPatch.Reset()");
-                    TickPatch.Reset();
-
-                    // world graphics if a mapless scenario is loaded.
-                    if (!Current.Game.Maps.Any())
-                    {
-                        MemoryUtility.UnloadUnusedUnityAssets();
-                        Find.World.renderer.RegenerateAllLayersNow();
-                    }
-                });
+                Multiplayer.justLoaded = true;
             }
 
             return false;
