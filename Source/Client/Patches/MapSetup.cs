@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
 using RimWorld;
@@ -84,64 +85,49 @@ namespace Multiplayer.Client
     public static class WeatherDecider_StartInitialWeather_Patch
     {
         /// <summary>
-        /// Using HarmonyPriority.First ensures our seeding runs before any other patches on this method.
+        /// The Prefix runs before the original method. It will handle all our logic.
+        /// It returns `true` to let the original method run, or `false` to skip it entirely.
         /// </summary>
         [HarmonyPriority(Priority.First)]
-        static void Prefix(Map ___map)
+        static bool Prefix(WeatherDecider __instance, Map ___map)
         {
-            // Before the original method runs, push a new state to the random number generator,
-            // using the map's unique ID as a seed. This ID is deterministic for all players.
-            if (Multiplayer.Client != null)
+            // If not in multiplayer, do nothing and let the original method run.
+            if (Multiplayer.Client == null) return true;
+
+            // --- FIX 1: The Desync ---
+            // Seed the random number generator with the map's unique ID. This is deterministic
+            // across all clients and ensures everyone gets the same "random" weather.
+            Rand.PushState(___map.uniqueID);
+
+            // --- FIX 2: The Crash ---
+            // Check if the current biome has any weathers defined.
+            if (!__instance.WeatherCommonalities.Any())
             {
-                Rand.PushState(___map.uniqueID);
+                // If not, we prevent the original method from running because it would crash.
+                // Instead, we manually set a safe default (Clear weather).
+                Log.Warning("Multiplayer: Biome has no weathers. Forcing Clear weather to prevent crash.");
+
+                ___map.weatherManager.curWeather = WeatherDefOf.Clear;
+                // Use AccessTools to set the private field `curWeatherDuration`.
+                AccessTools.Field(typeof(WeatherDecider), "curWeatherDuration").SetValue(__instance, 10000);
+                ___map.weatherManager.lastWeather = ___map.weatherManager.curWeather;
+                ___map.weatherManager.curWeatherAge = 0;
+                ___map.weatherManager.ResetSkyTargetLerpCache();
+
+                // By returning false, we skip the original StartInitialWeather method entirely.
+                // The Finalizer will still run to pop the RNG state.
+                return false;
             }
+
+            // If weathers *do* exist, return true to allow the original method to run.
+            // It will now execute within our seeded RNG state, ensuring deterministic results.
+            return true;
         }
 
         /// <summary>
-        /// The original logic from your old patch is now integrated into a transpiler,
-        /// which is a more robust way to handle this kind of conditional logic change.
-        /// It checks if there are any weathers and, if not, skips to the end of the method.
-        /// </summary>
-        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator gen)
-        {
-            var original = instructions.ToList();
-            var label = gen.DefineLabel(); // A jump target for our new logic
-
-            // This transpiler will inject a check at the start of the method.
-            // It's equivalent to: if (this.WeatherCommonalities.Any()) { ... original code ... }
-
-            // Load `this` (the WeatherDecider instance)
-            yield return new CodeInstruction(OpCodes.Ldarg_0);
-            // Access its `WeatherCommonalities` property
-            yield return new CodeInstruction(OpCodes.Call, AccessTools.PropertyGetter(typeof(WeatherDecider), nameof(WeatherDecider.WeatherCommonalities)));
-
-            // Check if the enumerable has any elements
-            // THIS IS THE CORRECTED LINE:
-            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(Enumerable), nameof(Enumerable.Any)).MakeGenericMethod(typeof(WeatherCommonalityRecord)));
-
-            // If it DOES have elements (is not empty), jump to the original code.
-            yield return new CodeInstruction(OpCodes.Brtrue_S, label);
-
-            // If the check was false (no weathers), this code runs:
-            // Set weather to Clear and return, skipping the original logic.
-            yield return new CodeInstruction(OpCodes.Ldarg_0); // this
-            yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(WeatherDecider), "map")); // this.map
-            yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(Map), nameof(Map.weatherManager))); // this.map.weatherManager
-            yield return new CodeInstruction(OpCodes.Ldsfld, AccessTools.Field(typeof(WeatherDefOf), nameof(WeatherDefOf.Clear))); // WeatherDefOf.Clear
-            yield return new CodeInstruction(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(WeatherManager), nameof(WeatherManager.curWeather))); // .curWeather = ...
-            yield return new CodeInstruction(OpCodes.Ret); // return;
-
-            // This is the label where we jump to if weathers exist.
-            original.First().labels.Add(label);
-            foreach (var inst in original)
-            {
-                yield return inst;
-            }
-        }
-
-        /// <summary>
-        /// This finalizer will always run, ensuring we pop the random state
-        /// even if the original method has an error.
+        /// The Finalizer will always run after the Prefix (and the original method, if it ran).
+        /// This guarantees that our seeded RNG state is popped, preventing it from affecting
+        /// other parts of the game.
         /// </summary>
         static void Finalizer()
         {
