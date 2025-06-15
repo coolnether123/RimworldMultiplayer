@@ -12,26 +12,42 @@ namespace Multiplayer.Client
     [HarmonyPatch(nameof(TileTemperaturesComp.CachedTileTemperatureData.CheckCache))]
     static class CachedTileTemperatureData_CheckCache
     {
-        static void Prefix(
-        PlanetTile ___tile,
-        ref TimeSnapshot? __state
-    )
+        /// <summary>
+        /// This prefix now returns a bool to control whether the original method runs.
+        /// It handles the critical edge case of map generation.
+        /// </summary>
+        static bool Prefix(PlanetTile ___tile, ref TimeSnapshot? __state)
         {
-            if (Multiplayer.Client == null) return;
+            if (Multiplayer.Client == null)
+                return true; // Let vanilla run if not in multiplayer
 
-            // Look up a finished map, not one that's still generating
             Map map = Current.Game.FindMap(___tile.tileId);
-            if (map == null) return;
+            if (map == null)
+                return true; // No map exists, let vanilla handle it (likely for world view)
 
-            /*  NEW:   if the async-time component is missing the map is still
-             *         being created.  Don’t touch TickManager yet – just let
-             *         vanilla code run. */
-            if (map.AsyncTime() == null) return;
+            // This is the key change. If AsyncTime is null, the map is being generated.
+            // It is SAFE to let the vanilla method run because the entire MapGenerator
+            // process is already inside a deterministically seeded block.
+            if (map.AsyncTime() == null)
+            {
+                return true; // Let vanilla code run within the seeded map-gen context
+            }
 
+            // If the map and its components are fully loaded, we use our multiplayer logic.
             __state = TimeSnapshot.GetAndSetFromMap(map);
+
+            // Return false to prevent the original (potentially unseeded) method from running.
+            return false;
         }
 
-        static void Postfix(TimeSnapshot? __state) => __state?.Set();
+        /// <summary>
+        /// The postfix remains the same, restoring the time snapshot if one was taken.
+        /// </summary>
+        static void Postfix(TimeSnapshot? __state)
+        {
+            // This only runs if the prefix returned false, as it's paired with __state.
+            __state?.Set();
+        }
     }
 
 
