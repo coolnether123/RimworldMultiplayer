@@ -915,4 +915,39 @@ namespace Multiplayer.Client
     //======================================================================================
     // END CARAVAN TENDING DESYNC FIX
     //======================================================================================
+
+    //======================================================================================
+    // BEGIN CARAVAN BABY TRACKER DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by the Ideo exposure system for babies in a caravan.
+    /// The game uses an unseeded random number generator to determine if a baby gains
+    /// Ideo exposure, leading to different outcomes on different clients.
+    /// This patch seeds the random number generator before the logic runs.
+    /// </summary>
+    [HarmonyPatch(typeof(Caravan_BabyTracker), nameof(Caravan_BabyTracker.TickInterval))]
+    public static class Caravan_BabyTracker_Tick_Sync
+    {
+        // The caravan object is private in Caravan_BabyTracker, so we use `___caravan` to access it.
+        static void Prefix(Caravan ___caravan)
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PushState(___caravan.ID);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN BABY TRACKER DESYNC FIX
+    //======================================================================================
 }
