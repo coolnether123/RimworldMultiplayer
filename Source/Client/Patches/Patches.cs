@@ -13,6 +13,7 @@ using Multiplayer.Client.Patches;
 using UnityEngine;
 using Verse;
 using Verse.AI;
+using System.Security.Policy;
 
 namespace Multiplayer.Client
 {
@@ -676,6 +677,52 @@ namespace Multiplayer.Client
 
     //======================================================================================
     // END DESYNC FIX
+    //======================================================================================
+
+    //======================================================================================
+    // BEGIN CARAVAN NEEDS DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by the caravan needs system, specifically joy satisfaction.
+    /// The vanilla game uses an unseeded random number generator to pick a joy activity for pawns,
+    /// which causes each client to make a different choice and desynchronize.
+    /// This patch wraps the entire needs ticking logic in a seeded random state block, ensuring
+    /// that all random events within (joy, chemical satisfaction, etc.) are deterministic.
+    /// </summary>
+    [HarmonyPatch(typeof(Caravan_NeedsTracker), nameof(Caravan_NeedsTracker.NeedsTrackerTickInterval))]
+    public static class Caravan_NeedsTracker_Tick_Sync
+    {
+        /// <summary>
+        /// Before the needs logic runs, we push a new state to the random number generator.
+        /// The state is seeded with the caravan's unique ID, which is deterministic.
+        /// We use a direct parameter reference `___caravan` for efficiency.
+        /// </summary>
+        static void Prefix(Caravan ___caravan)
+        {
+            if (Multiplayer.Client != null)
+            {
+                // Seed with the caravan's unique ID to ensure deterministic results.
+                Rand.PushState(___caravan.ID);
+            }
+        }
+
+        /// <summary>
+        /// After the needs logic has finished, we pop the state to restore the RNG.
+        /// This prevents our deterministic seed from affecting other parts of the game.
+        /// A finalizer is used to guarantee this runs even if the original method has an error.
+        /// </summary>
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END CARAVAN NEEDS DESYNC FIX
     //======================================================================================
 
     //======================================================================================
