@@ -16,6 +16,7 @@ namespace Multiplayer.Client
         static void Postfix(Map __result)
         {
             if (Multiplayer.Client == null || __result == null) return;
+            //if(__result.Biome.baseWeatherCommonalities.Count > 0) //Remove this it's not going to work but it's here for debug
             SetupMap(__result);
         }
 
