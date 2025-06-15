@@ -642,43 +642,22 @@ namespace Multiplayer.Client
     {
         static IEnumerable<MethodBase> TargetMethods()
         {
-            // These methods all run periodically and use Rand, causing desyncs.
-            // By patching all of them here, we ensure they are always run inside a
-            // deterministically seeded random state.
-
-            // Map-level tickers
+            // These methods all run periodically on a specific map and use Rand.
             yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
             yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
             yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
             yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
-
-            // World-level tickers (Storyteller)
-            yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
-            yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
         }
 
         /// <summary>
         /// Before any of the targeted methods run, we push a new state to the random number generator.
         /// We seed it based on whether we are ticking a map or the world.
         /// </summary>
-        static void Prefix(object __instance)
+        static void Prefix(Map ___map)
         {
-            if (Multiplayer.Client == null) return;
-
-            // Determine the correct seed based on the context
-            int? seed = null;
-            if (__instance is MapComponent mapComp) // Covers map-based tickers with a ___map field
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
             {
-                seed = mapComp.map?.AsyncTime()?.mapTicks;
-            }
-            else if (__instance is Storyteller || __instance is StoryWatcher) // Covers world-based storyteller ticks
-            {
-                seed = Multiplayer.AsyncWorldTime?.worldTicks;
-            }
-
-            if (seed.HasValue)
-            {
-                Rand.PushState(seed.Value);
+                Rand.PushState(___map.AsyncTime().mapTicks);
             }
         }
 
@@ -689,8 +668,6 @@ namespace Multiplayer.Client
         /// </summary>
         static void Finalizer(Map ___map)
         {
-
-            if (Multiplayer.Client == null) return;
 
             if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
             {
@@ -1009,5 +986,49 @@ namespace Multiplayer.Client
 
     //======================================================================================
     // END WORLD TEMPERATURE DESYNC FIX
+    //======================================================================================
+
+    //======================================================================================
+    // BEGIN STORYTELLER DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by the global Storyteller. When the storyteller
+    /// ticks in the world context (not tied to a specific map), its random decisions are
+    /// not seeded, causing divergence. This patch seeds the storyteller and story watcher
+    /// ticks with the multiplayer world time.
+    /// </summary>
+    [HarmonyPatch]
+    public static class Storyteller_Tick_Sync
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
+            yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
+        }
+
+        /// <summary>
+        /// This prefix does not need any parameters from the original method. It seeds
+        /// the RNG with the global multiplayer world tick count.
+        /// </summary>
+        static void Prefix()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END STORYTELLER DESYNC FIX
     //======================================================================================
 }
