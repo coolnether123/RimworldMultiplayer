@@ -648,6 +648,7 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
             yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
             yield return AccessTools.Method(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick));
+            yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
         }
 
         /// <summary>
