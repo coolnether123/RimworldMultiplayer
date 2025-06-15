@@ -14,6 +14,7 @@ using UnityEngine;
 using Verse;
 using Verse.AI;
 using System.Security.Policy;
+using Verse.AI.Group;
 
 namespace Multiplayer.Client
 {
@@ -643,12 +644,19 @@ namespace Multiplayer.Client
         static IEnumerable<MethodBase> TargetMethods()
         {
             // These methods all run periodically on a specific map and use Rand.
+            // We add any new discovered source of desync to this list.
             yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
             yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
             yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
             yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
             yield return AccessTools.Method(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick));
             yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
+
+            // Newly added tickers based on latest desync logs:
+            yield return AccessTools.Method(typeof(WeatherManager), nameof(WeatherManager.WeatherManagerTick));
+            yield return AccessTools.Method(typeof(LordManager), nameof(LordManager.LordManagerTick));
+            yield return AccessTools.Method(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick));
+            yield return AccessTools.Method(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick));
         }
 
         /// <summary>
