@@ -21,21 +21,113 @@ static class AttackNowPatch
     }
 }
 
+public static class TileFactionContext
+{
+    private static readonly Dictionary<int, Faction> tileFactions = new Dictionary<int, Faction>();
+    private static readonly object lockObject = new object();
+
+    public static void SetFactionForTile(int tileId, Faction faction)
+    {
+        lock (lockObject)
+        {
+            tileFactions[tileId] = faction;
+        }
+    }
+
+    public static Faction GetFactionForTile(int tileId)
+    {
+        lock (lockObject)
+        {
+            return tileFactions.TryGetValue(tileId, out Faction faction) ? faction : null;
+        }
+    }
+
+    public static void ClearTile(int tileId)
+    {
+        lock (lockObject)
+        {
+            tileFactions.Remove(tileId);
+        }
+    }
+}
+
+// Patch the SetupCamp method to store faction by tile ID
+[HarmonyPatch(typeof(SettleInEmptyTileUtility), nameof(SettleInEmptyTileUtility.SetupCamp))]
+static class SetupCamp_StoreFactionByTile_Patch
+{
+    static void Prefix(Caravan caravan)
+    {
+        if (caravan != null)
+            TileFactionContext.SetFactionForTile(caravan.Tile, caravan.Faction);
+    }
+}
+
 [HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new[] { typeof(PlanetTile), typeof(IntVec3), typeof(WorldObjectDef), typeof(IEnumerable<GenStepWithParams>), typeof(bool) })]
 static class MapGenFactionPatch
 {
     static void Prefix(PlanetTile tile)
     {
-        var mapParent = Find.WorldObjects.MapParentAt(tile);
-        if (Multiplayer.Client != null && mapParent == null)
-            Log.Warning($"Couldn't set the faction context for map gen at {tile.tileId}: no world object");
+        Faction factionToSet = null;
 
-        FactionContext.Push(mapParent?.Faction);
+        // NEW: Check if we have a stored faction for this tile
+        factionToSet = TileFactionContext.GetFactionForTile(tile.tileId);
+
+        if (factionToSet == null)
+        {
+            // FALLBACK: Use the old logic for all other cases
+            var mapParent = Find.WorldObjects.MapParentAt(tile);
+            factionToSet = mapParent?.Faction;
+        }
+
+        if (factionToSet == null && Multiplayer.Client != null)
+        {
+            Log.Warning($"Couldn't set the faction context for map gen at {tile.tileId}: no world object and no stored faction.");
+        }
+
+        FactionContext.Push(factionToSet);
     }
 
     static void Finalizer()
     {
         FactionContext.Pop();
+    }
+}
+
+// Clean up after map generation is complete
+[HarmonyPatch(typeof(MapGenerator), nameof(MapGenerator.GenerateMap))]
+static class CleanupTileFactionContext
+{
+    static void Finalizer(MapParent parent)
+    {
+        if (parent != null)
+            TileFactionContext.ClearTile(parent.Tile);
+    }
+}
+
+public static class CaravanFactionContext
+{
+    public static Faction Current { get; private set; }
+
+    public static void Push(Faction faction) => Current = faction;
+    public static void Pop() => Current = null;
+}
+
+// This is the new patch that captures the context
+[HarmonyPatch(typeof(SettleInEmptyTileUtility), nameof(SettleInEmptyTileUtility.SetupCamp))]
+static class SetupCamp_FactionContext_Patch
+{
+    static void Prefix(Caravan caravan)
+    {
+        // Before SetupCamp runs, grab the caravan's faction and store it.
+        if (caravan != null)
+            CaravanFactionContext.Push(caravan.Faction);
+    }
+
+    static void Finalizer()
+    {
+        // After SetupCamp is completely finished (or has an error),
+        // clear the stored faction to prevent it from leaking into other operations.
+        CaravanFactionContext.Pop();
     }
 }
 

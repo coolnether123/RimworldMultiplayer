@@ -12,18 +12,29 @@ namespace Multiplayer.Client
     [HarmonyPatch(nameof(TileTemperaturesComp.CachedTileTemperatureData.CheckCache))]
     static class CachedTileTemperatureData_CheckCache
     {
-        static void Prefix(PlanetTile ___tile, ref TimeSnapshot? __state)
+        static void Prefix(
+        PlanetTile ___tile,
+        ref TimeSnapshot? __state
+    )
         {
             if (Multiplayer.Client == null) return;
 
-            Map map = Current.Game.FindMap(___tile);
+            // Look up a finished map, not one that's still generating
+            Map map = Current.Game.FindMap(___tile.tileId);
             if (map == null) return;
+
+            /*  NEW:   if the async-time component is missing the map is still
+             *         being created.  Don’t touch TickManager yet – just let
+             *         vanilla code run. */
+            if (map.AsyncTime() == null) return;
 
             __state = TimeSnapshot.GetAndSetFromMap(map);
         }
 
         static void Postfix(TimeSnapshot? __state) => __state?.Set();
     }
+
+
 
     [HarmonyPatch(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.RetrieveCachedData))]
     static class RetrieveCachedData_Patch

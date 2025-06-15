@@ -80,6 +80,10 @@ namespace Multiplayer.Client.AsyncTime
             if (Multiplayer.Client == null || t.Map == null) return true;
 
             AsyncTimeComp comp = t.Map.AsyncTime();
+
+            // FIX: Check if the component exists yet
+            if (comp == null) return true;
+
             TickerType tickerType = t.def.tickerType;
 
             if (tickerType == TickerType.Normal)
@@ -101,6 +105,10 @@ namespace Multiplayer.Client.AsyncTime
             if (Multiplayer.Client == null || t.Map == null) return true;
 
             AsyncTimeComp comp = t.Map.AsyncTime();
+
+            // FIX: Check if the component exists yet
+            if (comp == null) return true;
+
             TickerType tickerType = t.def.tickerType;
 
             if (tickerType == TickerType.Normal)

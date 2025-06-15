@@ -70,6 +70,10 @@ namespace Multiplayer.Client
             if (respawningAfterLoad) return;
             if (Multiplayer.Client == null) return;
 
+            // FIX: Check if map component exists
+            var mapComp = map.MpComp();
+            if (mapComp == null) return;
+
             if (ThingContext.stack.Any(p => p.Item1?.def == ThingDefOf.ActiveDropPod)) return;
 
             if (__instance is ThingWithComps t && t.GetComp<CompForbiddable>() != null)
@@ -83,6 +87,11 @@ namespace Multiplayer.Client
         static void Prefix(Thing __instance)
         {
             if (Multiplayer.Client == null) return;
+
+            // FIX: Check if map component exists
+            var mapComp = __instance.Map?.MpComp();
+            if (mapComp == null) return;
+
             __instance.Map.MpComp().Notify_ThingDespawned(__instance);
         }
     }
