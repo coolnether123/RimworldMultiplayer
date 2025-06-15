@@ -950,4 +950,40 @@ namespace Multiplayer.Client
     //======================================================================================
     // END CARAVAN BABY TRACKER DESYNC FIX
     //======================================================================================
+
+    //======================================================================================
+    // BEGIN WORLD TEMPERATURE DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a desync caused by the global temperature calculation system.
+    /// When calculating the temperature for a caravan's tile (which has no map), the game
+    /// uses an unseeded random number, causing each client to get a different temperature
+    /// and desynchronize. This patch seeds the entire world temperature tick, making it
+    /// deterministic.
+    /// </summary>
+    [HarmonyPatch(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.WorldComponentTick))]
+    public static class TileTemperaturesComp_Tick_Sync
+    {
+        static void Prefix()
+        {
+            if (Multiplayer.Client != null)
+            {
+                // Seed with the world's tick count, as this is a world-level component.
+                Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END WORLD TEMPERATURE DESYNC FIX
+    //======================================================================================
 }
