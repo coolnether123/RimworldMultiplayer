@@ -642,22 +642,43 @@ namespace Multiplayer.Client
     {
         static IEnumerable<MethodBase> TargetMethods()
         {
-            // These methods all run periodically on the map and use Rand, causing desyncs.
+            // These methods all run periodically and use Rand, causing desyncs.
+            // By patching all of them here, we ensure they are always run inside a
+            // deterministically seeded random state.
+
+            // Map-level tickers
             yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
             yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
             yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
             yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
+
+            // World-level tickers (Storyteller)
+            yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
+            yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
         }
 
         /// <summary>
         /// Before any of the targeted methods run, we push a new state to the random number generator.
-        /// We seed it with the map's current simulation tick count.
+        /// We seed it based on whether we are ticking a map or the world.
         /// </summary>
-        static void Prefix(Map ___map)
+        static void Prefix(object __instance)
         {
-            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            if (Multiplayer.Client == null) return;
+
+            // Determine the correct seed based on the context
+            int? seed = null;
+            if (__instance is MapComponent mapComp) // Covers map-based tickers with a ___map field
             {
-                Rand.PushState(___map.AsyncTime().mapTicks);
+                seed = mapComp.map?.AsyncTime()?.mapTicks;
+            }
+            else if (__instance is Storyteller || __instance is StoryWatcher) // Covers world-based storyteller ticks
+            {
+                seed = Multiplayer.AsyncWorldTime?.worldTicks;
+            }
+
+            if (seed.HasValue)
+            {
+                Rand.PushState(seed.Value);
             }
         }
 
@@ -668,6 +689,9 @@ namespace Multiplayer.Client
         /// </summary>
         static void Finalizer(Map ___map)
         {
+
+            if (Multiplayer.Client == null) return;
+
             if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
             {
                 Rand.PopState();
