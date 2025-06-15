@@ -38,7 +38,6 @@ namespace Multiplayer.Client
 
     /// <summary>
     /// This patch does the same as above for TicksAbs, which is also used in temperature calculations.
-    /// For the purpose of temperature, using the map's current tick is sufficient and deterministic.
     /// </summary>
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TicksAbs), MethodType.Getter)]
     static class TickManager_TicksAbs_Patch
@@ -57,22 +56,27 @@ namespace Multiplayer.Client
     static class CachedTileTemperatureData_CheckCache
     {
         /// <summary>
-        /// Before the temperature cache is checked, we set our tick override if needed.
+        /// This Prefix correctly uses the available `___tile` field from the CachedTileTemperatureData instance
+        /// to look up the map and set the tick override.
         /// </summary>
-        static void Prefix(Map ___map)
+        static void Prefix(PlanetTile ___tile)
         {
             if (Multiplayer.Client == null) return;
 
-            // If the map has a valid async time component, set the override.
-            if (___map.AsyncTime() != null)
-            {
-                TickManager_Patch_State.TicksGame_Agnostic = ___map.AsyncTime().mapTicks;
-            }
+            // Use the provided tile to find the map, if it exists.
+            Map map = Current.Game.FindMap(___tile.tileId);
+
+            // If the map is null OR its multiplayer components are not ready, do nothing.
+            // The vanilla logic will run, which is safe during the seeded map generation process.
+            if (map == null || map.AsyncTime() == null) return;
+
+            // If the map is fully loaded, set our static override to this map's AsyncTime tick count.
+            // The TickManager patches will ensure this value is used by the subsequent vanilla calculations.
+            TickManager_Patch_State.TicksGame_Agnostic = map.AsyncTime().mapTicks;
         }
 
         /// <summary>
-        /// After the cache check is complete, we clear our override to restore normal game behavior.
-        /// A Finalizer is used to guarantee this runs even if an error occurs.
+        /// The Finalizer ensures our tick override is always cleared, restoring normal game behavior.
         /// </summary>
         static void Finalizer()
         {
