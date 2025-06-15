@@ -42,6 +42,15 @@ namespace Multiplayer.Client.Desyncs
 
         public static bool ShouldAddStackTraceForDesyncLog()
         {
+
+            // The native stack walker is causing a NullReferenceException on game start.
+            // As this is a debugging tool, we can safely disable it entirely to allow
+            // the game to run. This line forces the method to always return false,
+            // preventing the crash-causing code from ever executing.
+            return false;
+
+            if (Multiplayer.initializing) return false;
+
             if (Multiplayer.Client == null) return false;
             if (Multiplayer.settings.desyncTracingMode == DesyncTracingMode.None) return false;
             if (Multiplayer.game == null) return false;

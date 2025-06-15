@@ -58,7 +58,7 @@ namespace Multiplayer.Client
             }
 
             MapDrawerRegenPatch.copyFrom = drawers;
-            WorldGridCachePatch.copyFrom = worldGridSaved;
+            //WorldGridCachePatch.copyFrom = worldGridSaved;
             WorldGridExposeDataPatch.copyFrom = worldGridSaved;
             WorldRendererCachePatch.copyFrom = worldRendererSaved;
 

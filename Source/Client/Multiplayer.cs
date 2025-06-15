@@ -75,6 +75,10 @@ namespace Multiplayer.Client
         public static string restartConnect;
         public static bool restartConfigs;
 
+        public static bool justLoaded;
+        // This flag will control the desync tracer during startup.
+        public static bool initializing;
+
         public static void InitMultiplayer()
         {
             Native.EarlyInit(

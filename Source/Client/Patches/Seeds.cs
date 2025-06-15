@@ -91,11 +91,14 @@ namespace Multiplayer.Client
         }
     }
 
-    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action))]
-    static class SeedLongEvents
+    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), new[] { typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(bool), typeof(Action) })]
+    static class SeedLongEvents // And MarkLongEvents, LongEventAlwaysSync
     {
-        static void Prefix(ref Action action)
+        static void Prefix(ref Action action, string textKey) // Add textKey parameter
         {
+            // Add a check to ensure we don't wrap the main map generation event
+            if (textKey == "GeneratingMap") return;
+
             if (Multiplayer.Client != null && (Multiplayer.Ticking || Multiplayer.ExecutingCmds))
             {
                 var seed = Rand.Int;
@@ -165,7 +168,7 @@ namespace Multiplayer.Client
         }
 
         [HarmonyPriority(MpPriority.MpLast)]
-        static void Postfix(bool __state)
+        static void Finalizer(bool __state)
         {
             if (__state)
                 Rand.PopState();

@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
@@ -20,14 +21,14 @@ static class AttackNowPatch
     }
 }
 
-[HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new []{ typeof(int), typeof(IntVec3), typeof(WorldObjectDef) })]
+[HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new[] { typeof(PlanetTile), typeof(IntVec3), typeof(WorldObjectDef), typeof(IEnumerable<GenStepWithParams>), typeof(bool) })]
 static class MapGenFactionPatch
 {
-    static void Prefix(int tile)
+    static void Prefix(PlanetTile tile)
     {
         var mapParent = Find.WorldObjects.MapParentAt(tile);
         if (Multiplayer.Client != null && mapParent == null)
-            Log.Warning($"Couldn't set the faction context for map gen at {tile}: no world object");
+            Log.Warning($"Couldn't set the faction context for map gen at {tile.tileId}: no world object");
 
         FactionContext.Push(mapParent?.Faction);
     }

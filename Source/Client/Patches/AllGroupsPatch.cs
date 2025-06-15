@@ -19,9 +19,10 @@ namespace Multiplayer.Client
 
             foreach (CodeInstruction inst in insts)
             {
-                if (inst.operand == AllGroups)
+                if (inst.operand as FieldInfo == AllGroups)
                 {
-                    yield return new CodeInstruction(OpCodes.Ldarg_1);
+                    // Create new instructions, making sure to copy labels from the original
+                    yield return new CodeInstruction(OpCodes.Ldarg_1) { labels = inst.labels };
                     yield return new CodeInstruction(OpCodes.Call, method);
                 }
                 else

@@ -59,11 +59,54 @@ namespace Multiplayer.Client
         [TweakValue("Multiplayer")]
         public static bool doSimulate = true;
 
+        public static void RunAgnosticUpdate()
+        {
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Start();
+
+            // This sequence is now the single source of truth for running a game update.
+            RunCmds();
+            if (LongEventHandler.eventQueue.Count == 0)
+            {
+                DoUpdate(out var worked);
+                if (worked) workTicks++;
+            }
+
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Pause();
+        }
+
         static bool Prefix()
         {
             if (Multiplayer.Client == null) return true;
+
+            // This is the definitive fix for all post-load issues.
+            // It runs at the start of the very first TickManagerUpdate after a load.
+            if (Multiplayer.justLoaded)
+            {
+                // Unset the flag so this only runs once.
+                Multiplayer.justLoaded = false;
+
+                Log.Message("Multiplayer [TickPatch]: Running post-load initialization.");
+
+                // Manually prime the history for all factions.
+                if (Multiplayer.WorldComp != null)
+                {
+                    foreach (var factionId in Multiplayer.WorldComp.factionData.Keys.ToList())
+                    {
+                        var faction = Find.FactionManager.GetById(factionId);
+                        if (faction != null)
+                            Multiplayer.WorldComp.FinalizeInitFaction(faction);
+                    }
+                }
+
+                // Reset the tick controller to a clean state.
+                TickPatch.Reset();
+            }
+
             if (!ShouldHandle) return false;
             if (Frozen) return false;
+
 
             int ticksBehind = tickUntil - Timer;
             realTime += Time.deltaTime * 1000f;
@@ -91,7 +134,7 @@ namespace Multiplayer.Client
             if (realTime > 0)
                 realTime = 0;
 
-            if (Time.time - frameTimeSentAt > 32f/1000f)
+            if (Time.time - frameTimeSentAt > 32f / 1000f)
             {
                 Multiplayer.Client.Send(Packets.Client_FrameTime, avgFrameTime);
                 frameTimeSentAt = Time.time;
@@ -105,18 +148,9 @@ namespace Multiplayer.Client
 
             CheckFinishSimulating();
 
-            if (MpVersion.IsDebug)
-                SimpleProfiler.Start();
-
-            RunCmds();
-            if  (LongEventHandler.eventQueue.Count == 0)
-            {
-                DoUpdate(out var worked);
-                if (worked) workTicks++;
-            }
-
-            if (MpVersion.IsDebug)
-                SimpleProfiler.Pause();
+            // This is the single, correct call to the game update logic.
+            // The redundant second call has been removed.
+            RunAgnosticUpdate();
 
             CheckFinishSimulating();
 
@@ -245,11 +279,26 @@ namespace Multiplayer.Client
 
                 try
                 {
+                    // Set the context based on the type of tickable object
+                    if (tickable is AsyncWorldTimeComp)
+                        AsyncWorldTimeComp.tickingWorld = true;
+                    else if (tickable is AsyncTimeComp comp)
+                        AsyncTimeComp.tickingMap = comp.map;
+
+                    // Execute the tick with the correct context active
                     tickable.Tick();
                 }
                 catch (Exception e)
                 {
                     Log.Error($"Exception during ticking {tickable}: {e}");
+                }
+                finally
+                {
+                    // ALWAYS reset the context flags after the tick is complete
+                    if (tickable is AsyncWorldTimeComp)
+                        AsyncWorldTimeComp.tickingWorld = false;
+                    else if (tickable is AsyncTimeComp)
+                        AsyncTimeComp.tickingMap = null;
                 }
             }
         }

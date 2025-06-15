@@ -89,7 +89,12 @@ namespace Multiplayer.Client
             {
                 MultiplayerData.CollectDefInfos();
                 Sync.PostInitHandlers();
-            }, "Loading"); // Right before the events from HandleCommandLine
+            }, "Loading");
+
+            LongEventHandler.ExecuteWhenFinished(() => {
+                HandleRestartConnect();
+                HandleCommandLine();
+            });
 
             HandleRestartConnect();
             HandleCommandLine();
@@ -140,7 +145,12 @@ namespace Multiplayer.Client
         private static void HandleRestartConnect()
         {
             if (Multiplayer.restartConnect == null)
+            {
+                Log.Message("[Multiplayer] HandleRestartConnect: restartConnect is null. Skipping.");
                 return;
+            }
+
+            Log.Warning($"[Multiplayer] HandleRestartConnect: restartConnect has value: '{Multiplayer.restartConnect}'. Attempting auto-connect.");
 
             // No colon means the connect string is a steam user id
             if (!Multiplayer.restartConnect.Contains(':'))
@@ -151,7 +161,7 @@ namespace Multiplayer.Client
                 return;
             }
 
-            var split = Multiplayer.restartConnect.Split(new[]{':'}, StringSplitOptions.RemoveEmptyEntries);
+            var split = Multiplayer.restartConnect.Split(new[] { ':' }, StringSplitOptions.RemoveEmptyEntries);
             if (split.Length == 2 && int.TryParse(split[1], out int port))
                 DoubleLongEvent(() => ClientUtil.TryConnectWithWindow(split[0], port, false), "MpConnecting");
         }

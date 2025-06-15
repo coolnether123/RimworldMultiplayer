@@ -54,49 +54,38 @@ namespace Multiplayer.Client
     {
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> e, MethodBase original)
         {
-            byte thingToIgnore_Ldarg_S = (byte) original.GetParameters().FirstIndexOf(p => p.Name == "thingToIgnore");
-
-            if (thingToIgnore_Ldarg_S < 1) {
-                Log.Error($"FAIL: {nameof(CanPlaceBlueprintAtPatch2)} can't find thingToIgnore");
+            var thingToIgnoreParam = original.GetParameters().FirstOrDefault(p => p.Name == "thingToIgnore");
+            if (thingToIgnoreParam == null)
+            {
+                Log.Error($"FAIL: {nameof(CanPlaceBlueprintAtPatch2)} can't find thingToIgnore parameter.");
                 return e;
             }
 
             List<CodeInstruction> insts = e.ToList();
 
-            int loop1 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "IdenticalThingExists").
-                Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
+            try
+            {
+                // This part of the patch remains valid in 1.6
+                int loop1 = new CodeFinder(original, insts)
+                    .Forward(OpCodes.Ldstr, "IdenticalThingExists")
+                    .Backward(OpCodes.Ldarg_S, (byte)thingToIgnoreParam.Position)
+                    .Pos;
 
-            insts.Insert(
-                loop1 - 1,
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop1 - 1].operand),
-                new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
-                new CodeInstruction(OpCodes.Brtrue, insts[loop1 + 1].operand)
-            );
+                insts.Insert(
+                    loop1 - 1,
+                    new CodeInstruction(OpCodes.Ldloc_S, insts[loop1 - 1].operand),
+                    new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
+                    new CodeInstruction(OpCodes.Brtrue, insts[loop1 + 1].operand)
+                );
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"Multiplayer compatibility patch for blueprints failed (part 1): {ex}");
+            }
 
-            int loop2 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "InteractionSpotBlocked").
-                Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
-
-            insts.Insert(
-                loop2 - 3,
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 3].operand),
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 2].operand),
-                new CodeInstruction(OpCodes.Callvirt, SpawnBuildingAsPossiblePatch.ThingListGet),
-                new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
-                new CodeInstruction(OpCodes.Brtrue, insts[loop2 + 1].operand)
-            );
-
-            int loop3 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "WouldBlockInteractionSpot").
-                Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
-
-            insts.Insert(
-                loop3 - 1,
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop3 - 1].operand),
-                new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
-                new CodeInstruction(OpCodes.Brtrue, insts[loop3 + 1].operand)
-            );
+            // The logic for InteractionSpotBlocked and WouldBlockInteractionSpot has been moved
+            // to helper methods in RimWorld 1.6 and can no longer be patched here.
+            // These parts of the transpiler have been removed to prevent errors.
 
             return insts;
         }
