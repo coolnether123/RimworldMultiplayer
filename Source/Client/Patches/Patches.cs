@@ -120,7 +120,11 @@ namespace Multiplayer.Client
     public static class ListerHaulables_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PopState();
+        }
     }
 
     #endregion
