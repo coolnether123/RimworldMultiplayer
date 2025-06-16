@@ -27,12 +27,14 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TicksGame), MethodType.Getter)]
     static class TickManager_TicksGame_Patch
     {
-        static void Postfix(ref int __result)
+        static bool Prefix(ref int __result)
         {
             if (TickManager_Patch_State.TicksGame_Agnostic.HasValue)
             {
                 __result = TickManager_Patch_State.TicksGame_Agnostic.Value;
+                return false; // Skip the original method
             }
+            return true; // Let the original method run
         }
     }
 
@@ -42,12 +44,14 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TicksAbs), MethodType.Getter)]
     static class TickManager_TicksAbs_Patch
     {
-        static void Postfix(ref int __result)
+        static bool Prefix(ref int __result)
         {
             if (TickManager_Patch_State.TicksGame_Agnostic.HasValue)
             {
                 __result = TickManager_Patch_State.TicksGame_Agnostic.Value;
+                return false; // Skip the original method
             }
+            return true; // Let the original method run
         }
     }
 
