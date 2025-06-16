@@ -1,6 +1,7 @@
 // In new file: PathingSync.cs
 
 using HarmonyLib;
+using Iced.Intel;
 using Multiplayer.API;
 using RimWorld;
 using System.Collections.Generic;
@@ -24,23 +25,19 @@ namespace Multiplayer.Client
             var harmony = Multiplayer.harmony;
             Log.Message("[Multiplayer] Applying FINAL pathfinding synchronization patches...");
 
+            // This patch now ONLY blocks clients from starting jobs.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(Pawn_JobTracker_StartJob_Patch), nameof(Pawn_JobTracker_StartJob_Patch.Prefix))
             );
             Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
 
+            // This patch is now the core of the sync logic.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
                 prefix: new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Prefix))
             );
             Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
-
-            harmony.Patch(
-                AccessTools.Method(typeof(Toils_Combat), nameof(Toils_Combat.GotoCastPosition)),
-                postfix: new HarmonyMethod(typeof(Toils_Combat_GotoCastPosition_Patch), nameof(Toils_Combat_GotoCastPosition_Patch.Postfix))
-            );
-            Log.Message("[Multiplayer] ... Patched Toils_Combat.GotoCastPosition");
         }
     }
 
@@ -52,26 +49,15 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
     public static class Pawn_JobTracker_StartJob_Patch
     {
-        public static bool Prefix(Pawn_JobTracker __instance, Job newJob, JobCondition lastJobEndCondition, ThinkNode jobGiver, bool resumeCurJobAfterwards, bool cancelBusyStances, ThinkTreeDef thinkTree, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
+        public static bool Prefix()
         {
-            // If not in MP, or a command is being executed, run original.
-            if (Multiplayer.Client == null || Multiplayer.dontSync) return true;
-
-            // Only the host can initiate a job start sequence.
-            if (Multiplayer.LocalServer == null) return false;
-
-            // If the job comes from the AI, ensure its source is attached.
-            if (jobGiver != null)
+            // If we are in multiplayer AND we are not the host, block the job.
+            if (Multiplayer.Client != null && Multiplayer.LocalServer == null)
             {
-                newJob.jobGiver = jobGiver;
-                newJob.jobGiverThinkTree = thinkTree;
+                return false;
             }
-
-            var jobParams = new JobParams(newJob);
-            var context = new StartJobContext(lastJobEndCondition, resumeCurJobAfterwards, cancelBusyStances, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
-
-            // Prevent the original method from running; the sync handler will call it.
-            return false;
+            // The host and singleplayer run the original method.
+            return true;
         }
     }
 
@@ -83,36 +69,32 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null || Multiplayer.dontSync || !__instance.pawn.Spawned) return true;
 
-            // This patch should ONLY run on the host to generate and send the path.
+            // This logic is now ONLY for the host.
             if (Multiplayer.LocalServer != null)
             {
-                // HOST LOGIC: Find a path and sync it.
+                // The host's PatherTick runs normally. We observe it.
+                // The TryGetPath check is the key moment when a new path is ready.
                 if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out PawnPath outPath))
                 {
-                    __instance.DisposeAndClearCurPathRequest();
+                    // A new path has been calculated for the host's pawn.
+                    // This is the authoritative path. We must send it to the clients.
+
                     var surrogate = new PawnPathSurrogate(outPath);
-                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path result found. Triggering sync for path with {surrogate.NodeCount} nodes.");
+                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path result found. Syncing path with {surrogate.NodeCount} nodes.");
+
+                    // Call the sync method to broadcast this path.
                     SyncedActions.SetPawnPath(__instance.pawn, surrogate);
-                    outPath.Dispose();
-                }
-            }
-            else // CLIENT LOGIC
-            {
-                // If a client is waiting for a path, it should do nothing.
-                if (__instance.curPathRequest != null)
-                {
-                    return false;
                 }
             }
 
-            // Let the original PatherTick run for everyone. 
-            // This is safe. The client's pather will be idle or using an old path,
-            // and the synced path will arrive and overwrite it when ready.
+            // Allow the original PatherTick to run for the host.
+            // This is what makes the host's pawns move.
+            // Clients are blocked from starting jobs, so their PatherTick will do nothing useful anyway.
             return true;
         }
     }
 
-    // The patch for the combat edge case.
+    /* The patch for the combat edge case.
     [HarmonyPatch(typeof(Toils_Combat), nameof(Toils_Combat.GotoCastPosition))]
     public static class Toils_Combat_GotoCastPosition_Patch
     {
@@ -131,7 +113,7 @@ namespace Multiplayer.Client
                 }
             };
         }
-    }
+    }*/
 
 
     //############################################################################
@@ -351,14 +333,18 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
+            if (Multiplayer.LocalServer != null) return;
+
             if (pawn == null || pawn.pather == null || surrogate == null) return;
+
             PawnPath path = surrogate.ToPawnPath(pawn);
-            Log.Message($"[SYNC] {pawn.LabelShortCap} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {surrogate.NodeCount} nodes.");
+            Log.Message($"[CLIENT] {pawn.LabelShortCap} is RECEIVING path with {surrogate.NodeCount} nodes.");
 
             if (pawn.pather.curPath != null)
             {
                 pawn.pather.curPath.ReleaseToPool();
             }
+
             pawn.pather.curPath = path;
 
             if (path.Found)
