@@ -1,4 +1,4 @@
-// Multiplayer/Client/Jobs/JobParams.cs
+// In file: JobParams.cs
 
 using Multiplayer.API;
 using Multiplayer.Common;
@@ -26,12 +26,12 @@ namespace Multiplayer.Client
         public Faction lordFaction;
         public int takeExtraIngestibles;
 
-        // CHANGED: Instead of syncing the ThinkNode object, we sync its definition and key.
         private ThinkTreeDef thinkTreeDef;
         private int jobGiverKey;
 
+        // REVISED: Sync verb by caster and verb's label. This is much more stable.
         private Thing verbCaster;
-        private int verbIndex = -1;
+        private string verbLabel;
 
         public JobParams() { }
 
@@ -51,15 +51,13 @@ namespace Multiplayer.Client
             lordFaction = job.lord?.faction;
             takeExtraIngestibles = job.takeExtraIngestibles;
 
-            // NEW: Safely capture the ThinkNode reference
             thinkTreeDef = job.jobGiverThinkTree;
             jobGiverKey = job.jobGiver?.UniqueSaveKey ?? -1;
 
             if (job.verbToUse != null)
             {
                 verbCaster = job.verbToUse.Caster;
-                var owner = verbCaster as IVerbOwner;
-                verbIndex = owner?.VerbTracker?.AllVerbs.IndexOf(job.verbToUse) ?? -1;
+                verbLabel = job.verbToUse.verbProps.label; // Use the verb's label for identification
             }
         }
 
@@ -78,7 +76,6 @@ namespace Multiplayer.Client
             job.haulMode = haulMode;
             job.takeExtraIngestibles = takeExtraIngestibles;
 
-            // NEW: Reconstruct the ThinkNode reference
             if (thinkTreeDef != null && jobGiverKey != -1)
             {
                 if (thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out ThinkNode node))
@@ -88,13 +85,14 @@ namespace Multiplayer.Client
                 }
             }
 
-            if (verbCaster != null && verbIndex != -1)
+            if (verbCaster != null && !verbLabel.NullOrEmpty())
             {
                 var owner = verbCaster as IVerbOwner;
                 var tracker = owner?.VerbTracker;
-                if (tracker != null && verbIndex >= 0 && verbIndex < tracker.AllVerbs.Count)
+                if (tracker != null)
                 {
-                    job.verbToUse = tracker.AllVerbs[verbIndex];
+                    // Find verb by its label, which is much safer than index
+                    job.verbToUse = tracker.AllVerbs.FirstOrDefault(v => v.verbProps.label == verbLabel);
                 }
             }
 
@@ -117,12 +115,11 @@ namespace Multiplayer.Client
             worker.Bind(ref lordFaction);
             worker.Bind(ref takeExtraIngestibles);
 
-            // CHANGED: Syncing the Def and key is safe.
             worker.Bind(ref thinkTreeDef);
             worker.Bind(ref jobGiverKey);
 
             worker.Bind(ref verbCaster);
-            worker.Bind(ref verbIndex);
+            worker.Bind(ref verbLabel);
         }
     }
 }

@@ -1,4 +1,4 @@
-// Multiplayer/Client/Jobs/SyncedJobGiver.cs
+// In file: SyncedJobGiver.cs
 
 using Multiplayer.API;
 using Verse;
@@ -6,26 +6,21 @@ using Verse.AI;
 
 namespace Multiplayer.Client
 {
-    public static class SyncedJobGiver
+    // Make this class partial so it can be extended in other files.
+    public static partial class SyncedJobs
     {
         [SyncMethod]
-        public static void GiveJob(Pawn pawn, JobParams jobParams)
+        public static void StartJob(Pawn pawn, JobParams jobParams, JobCondition lastJobEndCondition)
         {
-            if (pawn == null || pawn.jobs == null) return;
+            if (pawn == null || pawn.jobs == null || pawn.Dead) return;
 
-            Job newJob = jobParams.ToJob();
+            Job job = jobParams.ToJob();
 
-            pawn.jobs.StartJob(
-                newJob,
-                JobCondition.InterruptForced,
-                newJob.jobGiver,
-                resumeCurJobAfterwards: false,
-                cancelBusyStances: true,
-                thinkTree: newJob.jobGiverThinkTree,
-                tag: null,
-                fromQueue: false,
-                addToJobsThisTick: false
-            );
+            // Use DontSync to prevent our StartJob patch from firing again and causing an infinite loop.
+            using (new Multiplayer.DontSync())
+            {
+                pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, false, true, job.jobGiverThinkTree, null, false);
+            }
         }
     }
 }
