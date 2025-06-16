@@ -23,21 +23,21 @@ namespace Multiplayer.Client
         static PathingSyncHarmony()
         {
             var harmony = Multiplayer.harmony;
-            Log.Message("[Multiplayer] Applying FINAL pathfinding synchronization patches...");
+            //Log.Message("[Multiplayer] Applying FINAL pathfinding synchronization patches...");
 
             // This patch now ONLY blocks clients from starting jobs.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(Pawn_JobTracker_StartJob_Patch), nameof(Pawn_JobTracker_StartJob_Patch.Prefix))
             );
-            Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
+            //Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
 
             // This patch is now the core of the sync logic.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
                 prefix: new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Prefix))
             );
-            Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
+            //Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
         }
     }
 
@@ -65,6 +65,11 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
     public static class Pawn_PathFollower_PatherTick_Patch
     {
+
+        // A simple cache to remember the last path we synced for each pawn.
+        // We use pawn.thingIDNumber as the key for safety.
+        private static Dictionary<int, PawnPathSurrogate> lastSyncedPathCache = new Dictionary<int, PawnPathSurrogate>();
+
         public static bool Prefix(Pawn_PathFollower __instance)
         {
             if (Multiplayer.Client == null || Multiplayer.dontSync || !__instance.pawn.Spawned) return true;
@@ -80,10 +85,18 @@ namespace Multiplayer.Client
                     // This is the authoritative path. We must send it to the clients.
 
                     var surrogate = new PawnPathSurrogate(outPath);
-                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path result found. Syncing path with {surrogate.NodeCount} nodes.");
+                    // Check if we have sent a path for this pawn before, and if the new path is different.
+                    if (!lastSyncedPathCache.TryGetValue(__instance.pawn.thingIDNumber, out var lastPath) || !surrogate.IsSameAs(lastPath))
+                    {
+                        Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: New unique path found. Syncing path with {surrogate.NodeCount} nodes.");
 
-                    // Call the sync method to broadcast this path.
-                    SyncedActions.SetPawnPath(__instance.pawn, surrogate);
+                        // It's a new path, so we sync it and update our cache.
+                        SyncedActions.SetPawnPath(__instance.pawn, surrogate);
+                        lastSyncedPathCache[__instance.pawn.thingIDNumber] = surrogate;
+                    }
+                    // If the path is the same as the last one we sent, we do nothing to avoid network spam.
+
+                    outPath.Dispose();
                 }
             }
 
@@ -91,6 +104,27 @@ namespace Multiplayer.Client
             // This is what makes the host's pawns move.
             // Clients are blocked from starting jobs, so their PatherTick will do nothing useful anyway.
             return true;
+        }
+        // Helper to clear the cache when a pawn is despawned to prevent memory leaks.
+        public static void ClearCacheForPawn(Pawn pawn)
+        {
+            if (pawn != null)
+            {
+                lastSyncedPathCache.Remove(pawn.thingIDNumber);
+            }
+        }
+    }
+
+    // Patch to clear our cache when a pawn is destroyed.
+    [HarmonyPatch(typeof(Pawn), nameof(Pawn.DeSpawn))]
+    public static class Pawn_DeSpawn_Patch
+    {
+        static void Postfix(Pawn __instance)
+        {
+            if (Multiplayer.Client != null)
+            {
+                Pawn_PathFollower_PatherTick_Patch.ClearCacheForPawn(__instance);
+            }
         }
     }
 
@@ -271,6 +305,24 @@ namespace Multiplayer.Client
         public int NodeCount => nodes?.Count ?? 0;
 
         public PawnPathSurrogate() { }
+
+        public bool IsSameAs(PawnPathSurrogate other)
+        {
+            if (other == null) return false;
+            if (this.isValid != other.isValid) return false;
+            if (!this.isValid) return true; // Both are invalid, so they are the same.
+            if (this.NodeCount != other.NodeCount) return false;
+            if (this.totalCost != other.totalCost) return false;
+
+            // Check if the first and last nodes are the same. This is a good enough heuristic
+            // to catch most meaningful path changes without comparing every single node.
+            if (this.nodes[0] != other.nodes[0] || this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1])
+            {
+                return false;
+            }
+
+            return true;
+        }
 
         public PawnPathSurrogate(PawnPath path)
         {
