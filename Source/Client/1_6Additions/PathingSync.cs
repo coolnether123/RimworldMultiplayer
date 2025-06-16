@@ -301,16 +301,14 @@ namespace Multiplayer.Client
             totalCost = (int)path.TotalCost;
             usedRegionHeuristics = path.UsedRegionHeuristics;
             nodes = new List<IntVec3>();
-            for (int i = 0; i < path.NodesLeftCount; i++) { nodes.Add(path.Peek(i)); }
-            // The path nodes are read in forward order from Peek()
-            nodes.Reverse(); // Reverse them to be in correct travel order
+            nodes = new List<IntVec3>(path.NodesReversed);
         }
 
         public PawnPath ToPawnPath(Pawn pawn)
         {
             if (!isValid) return PawnPath.NotFound;
             PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
-            newPath.InitializeFromNodeList(nodes, totalCost, usedRegionHeuristics);
+            newPath.InitializeFromReversedNodeList(nodes, totalCost, usedRegionHeuristics);
             return newPath;
         }
 
@@ -383,15 +381,12 @@ namespace Multiplayer.Client
 
     public static class PawnPath_Initialization_Extensions
     {
-        public static void InitializeFromNodeList(this PawnPath path, List<IntVec3> nodes, int cost, bool usedHeuristics)
+        public static void InitializeFromReversedNodeList(this PawnPath path, List<IntVec3> reversedNodes, int cost, bool usedHeuristics)
         {
             path.NodesReversed.Clear();
-            if (nodes != null)
+            if (reversedNodes != null)
             {
-                for (int i = nodes.Count - 1; i >= 0; i--)
-                {
-                    path.NodesReversed.Add(nodes[i]);
-                }
+                path.NodesReversed.AddRange(reversedNodes);
             }
             var pathTraverser = Traverse.Create(path);
             pathTraverser.Field<float>("totalCostInt").Value = cost;
