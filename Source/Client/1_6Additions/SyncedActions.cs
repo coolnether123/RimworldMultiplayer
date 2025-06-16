@@ -12,16 +12,20 @@ namespace Multiplayer.Client
     public static class SyncedActions
     {
         [SyncMethod]
-        public static void StartJob(Pawn pawn, JobParams jobParams, JobCondition lastJobEndCondition, bool resumeCurJobAfterwards, bool cancelBusyStances, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
+        public static void StartJob(Pawn pawn, JobParams jobParams, StartJobContext context)
         {
             if (pawn == null || pawn.jobs == null || pawn.Dead) return;
 
             Job job = jobParams.ToJob();
 
+            // Reconstruct all parameters from the context object
+            JobCondition lastJobEndCondition = (JobCondition)context.lastJobEndConditionByte;
+            JobTag? tag = context.hasTag ? new JobTag?((JobTag)context.tagValueByte) : null;
+            bool? keepCarryingThingOverride = context.hasCarryOverride ? new bool?(context.carryOverrideValue) : null;
+
             using (new Multiplayer.DontSync())
             {
-                // Note: The original StartJob has many parameters. For now we simplify, but may need to expand.
-                pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, resumeCurJobAfterwards, cancelBusyStances, job.jobGiverThinkTree, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
+                pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, context.resumeCurJobAfterwards, context.cancelBusyStances, job.jobGiverThinkTree, tag, context.fromQueue, context.canReturnCurJobToPool, keepCarryingThingOverride, context.continueSleeping, context.preToilReservationsCanFail);
             }
         }
 

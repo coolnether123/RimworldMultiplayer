@@ -1,7 +1,6 @@
-// In file: StartJob.cs
+// In file: JobStartPatches.cs
 
 using HarmonyLib;
-using Multiplayer.API;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -13,32 +12,40 @@ namespace Multiplayer.Client
     {
         public static bool Prefix(Pawn_JobTracker __instance, Job newJob, JobCondition lastJobEndCondition, ThinkNode jobGiver, bool resumeCurJobAfterwards, bool cancelBusyStances, ThinkTreeDef thinkTree, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
         {
-            // If not in multiplayer, or if a sync command is currently being executed, run the original logic.
             if (!Multiplayer.ShouldSync) return true;
 
             Pawn pawn = __instance.pawn;
-
-            // If the job comes from the AI, it needs to be determined by the host.
-            // A player-forced job (from right-click, etc.) has no jobGiver.
             bool isAIJob = jobGiver != null;
 
             if (isAIJob)
             {
-                // Only the host generates AI jobs. Clients must wait for the command.
                 if (Multiplayer.LocalServer == null) return false;
 
-                // Set the source info on the job before creating the params
                 newJob.jobGiver = jobGiver;
                 newJob.jobGiverThinkTree = thinkTree;
             }
 
-            // Package the job and its context into params and send it for syncing.
             var jobParams = new JobParams(newJob);
 
-            // The SyncedJobs class will handle broadcasting and execution on all clients.
-            SyncedActions.StartJob(pawn, jobParams, lastJobEndCondition, resumeCurJobAfterwards, cancelBusyStances, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
+            // Create and populate the new context object
+            var context = new StartJobContext
+            {
+                lastJobEndConditionByte = (byte)lastJobEndCondition,
+                resumeCurJobAfterwards = resumeCurJobAfterwards,
+                cancelBusyStances = cancelBusyStances,
+                hasTag = tag.HasValue,
+                tagValueByte = (byte)tag.GetValueOrDefault(),
+                fromQueue = fromQueue,
+                canReturnCurJobToPool = canReturnCurJobToPool,
+                hasCarryOverride = keepCarryingThingOverride.HasValue,
+                carryOverrideValue = keepCarryingThingOverride.GetValueOrDefault(),
+                continueSleeping = continueSleeping,
+                preToilReservationsCanFail = preToilReservationsCanFail
+            };
 
-            // Always prevent the original StartJob from running directly.
+            // Call the new, simplified sync method
+            SyncedActions.StartJob(pawn, jobParams, context);
+
             return false;
         }
     }
