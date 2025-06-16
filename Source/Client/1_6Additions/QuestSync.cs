@@ -14,6 +14,7 @@ namespace Multiplayer.Client
 {
     public static class QuestSync
     {
+        private const string LOG_PREFIX = "[MP QUEST SYNC]";
         private static bool isSyncingLetter = false;
 
         #region Quest Generation and Sync Logic
@@ -21,107 +22,148 @@ namespace Multiplayer.Client
         [HarmonyPatch(typeof(QuestUtility), nameof(QuestUtility.GenerateQuestAndMakeAvailable), new Type[] { typeof(QuestScriptDef), typeof(Slate) })]
         static class GenerateQuestAndMakeAvailable_Patch
         {
-            // STEP 1: Suppress quest generation on clients. Correctly implemented.
             static bool Prefix()
             {
-                return Multiplayer.Client == null || Multiplayer.LocalServer != null; // Host and SP only
+                Log.Message($"{LOG_PREFIX} GenerateQuestAndMakeAvailable_Patch Prefix running.");
+                bool canRun = Multiplayer.Client == null || Multiplayer.LocalServer != null;
+                Log.Message($"{LOG_PREFIX} Is Host/SP? {canRun}. Letting original method run: {canRun}");
+                return canRun;
             }
 
-            // STEP 2: After host generates, serialize and broadcast.
             static void Postfix(Quest __result, Slate vars)
             {
-                if (Multiplayer.LocalServer != null && __result != null)
+                Log.Message($"{LOG_PREFIX} GenerateQuestAndMakeAvailable_Patch Postfix running.");
+
+                if (Multiplayer.LocalServer != null)
                 {
-                    // Capture the random state used for generation
-                    // This should be done more robustly by pushing a seed before generation,
-                    // but for now, we'll send the state after.
-                    ulong randState = vars.Get<ulong>("randState"); // Assuming we inject this
+                    Log.Message($"{LOG_PREFIX} Postfix detected Host.");
+                    if (__result == null)
+                    {
+                        Log.Error($"{LOG_PREFIX} Postfix received a NULL quest (__result). Quest generation failed silently. Aborting sync.");
+                        return;
+                    }
 
-                    var writer = new ByteWriter();
-                    writer.WriteULong(randState);
-                    byte[] questData = ScribeUtil.WriteExposable(__result, "quest");
-                    writer.WritePrefixedBytes(questData);
+                    Log.Message($"{LOG_PREFIX} Quest generated successfully on host. ID: {__result.id}, Name: {__result.name}");
 
-                    // Call the SyncMethod to handle distribution
-                    ReceiveGeneratedQuest(__result.id, writer.ToArray());
+                    try
+                    {
+                        ulong randState = vars.Get<ulong>("randState");
+                        Log.Message($"{LOG_PREFIX} Retrieved randState from slate: {randState}");
+
+                        var writer = new ByteWriter();
+                        writer.WriteULong(randState);
+
+                        Log.Message($"{LOG_PREFIX} Serializing quest...");
+                        byte[] questData = ScribeUtil.WriteExposable(__result, "quest");
+                        writer.WritePrefixedBytes(questData);
+                        Log.Message($"{LOG_PREFIX} Serialization complete. Data length: {questData.Length}. Total payload length: {writer.Position}");
+
+                        Log.Message($"{LOG_PREFIX} Calling SyncMethod: ReceiveGeneratedQuest...");
+                        ReceiveGeneratedQuest(__result.id, writer.ToArray());
+                        Log.Message($"{LOG_PREFIX} Postfix finished.");
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"{LOG_PREFIX} EXCEPTION in Postfix: {e}");
+                    }
                 }
             }
         }
 
-        // This is a new patch needed to capture the RNG state *before* generation.
         [HarmonyPatch(typeof(QuestGen), nameof(QuestGen.Generate))]
         static class QuestGen_Generate_Patch
         {
-            // FIX: The parameter name now matches the original method's parameter name "initialVars".
             static void Prefix(Slate initialVars)
             {
-                // Capture the RNG state and store it in the slate so the Postfix can access it.
                 if (Multiplayer.LocalServer != null)
                 {
-                    initialVars.Set("randState", Rand.StateCompressed, true);
+                    ulong state = Rand.StateCompressed;
+                    initialVars.Set("randState", state, true);
+                    Log.Message($"{LOG_PREFIX} QuestGen_Generate_Patch Prefix: Captured and set randState in slate: {state}");
                 }
             }
         }
 
-        // STEP 3: Suppress the original letter utility unless we explicitly allow it. Correctly implemented.
         [HarmonyPatch(typeof(QuestUtility), nameof(QuestUtility.SendLetterQuestAvailable))]
         static class SendLetterQuestAvailable_Patch
         {
             static bool Prefix()
             {
-                // isSyncingLetter will only be true inside of our synced letter call
+                Log.Message($"{LOG_PREFIX} SendLetterQuestAvailable_Patch Prefix. isSyncingLetter = {isSyncingLetter}");
                 return isSyncingLetter;
             }
         }
 
-        // STEP 4: This method is now much cleaner. Host broadcasts, clients process.
         [SyncMethod]
         public static void ReceiveGeneratedQuest(int questId, byte[] data)
         {
-            // The host calls this method to broadcast, but its job is done.
-            // It will proceed to call SyncShowLetter from its own context.
+            Log.Message($"{LOG_PREFIX} ReceiveGeneratedQuest SyncMethod RUNNING. QuestID: {questId}");
+
             if (Multiplayer.LocalServer != null)
             {
-                // The host already has the quest, so now it just tells everyone (including itself) to show the letter.
+                Log.Message($"{LOG_PREFIX} ReceiveGeneratedQuest: Host logic branch.");
                 var hostQuest = Find.QuestManager.QuestsListForReading.FirstOrDefault(q => q.id == questId);
                 if (hostQuest != null)
                 {
+                    Log.Message($"{LOG_PREFIX} ReceiveGeneratedQuest: Host found quest {hostQuest.id}. Calling SyncShowLetter.");
                     SyncShowLetter(hostQuest.id, hostQuest.name);
+                }
+                else
+                {
+                    Log.Error($"{LOG_PREFIX} ReceiveGeneratedQuest: Host could NOT find quest with ID {questId} in its QuestManager.");
                 }
                 return;
             }
 
             // === CLIENT-ONLY LOGIC ===
-            var reader = new ByteReader(data);
-
-            // FIX: Renamed variable to avoid conflict with the one in the host's scope.
-            var newQuest = ReadFullQuest(reader);
-
-            if (newQuest == null)
+            Log.Message($"{LOG_PREFIX} ReceiveGeneratedQuest: Client logic branch.");
+            try
             {
-                Log.Error("MP: Client received null quest after deserialization.");
-                return;
+                var reader = new ByteReader(data);
+
+                Log.Message($"{LOG_PREFIX} Client deserializing quest...");
+                var newQuest = ReadFullQuest(reader);
+                Log.Message($"{LOG_PREFIX} Client deserialization complete.");
+
+                if (newQuest == null)
+                {
+                    Log.Error($"{LOG_PREFIX} Client received null quest after deserialization.");
+                    return;
+                }
+
+                if (!Find.QuestManager.QuestsListForReading.Any(q => q.id == newQuest.id))
+                {
+                    Find.QuestManager.Add(newQuest);
+                    Log.Message($"{LOG_PREFIX} Client ADDED quest {newQuest.id} ({newQuest.name}) to QuestManager.");
+                }
+                else
+                {
+                    Log.Warning($"{LOG_PREFIX} Client already has quest with ID {newQuest.id}. Not adding again.");
+                }
             }
-
-            // Ensure client doesn't already have this quest from a late packet
-            if (!Find.QuestManager.QuestsListForReading.Any(q => q.id == newQuest.id))
+            catch (Exception e)
             {
-                Find.QuestManager.Add(newQuest);
-                Log.Message($"MP Client: Added quest {newQuest.id} ({newQuest.name})");
+                Log.Error($"{LOG_PREFIX} EXCEPTION in client-side ReceiveGeneratedQuest: {e}");
             }
         }
 
-        // STEP 5: This shows the quest letter on all clients (and the host).
         [SyncMethod]
         public static void SyncShowLetter(int questId, string questName)
         {
+            Log.Message($"{LOG_PREFIX} SyncShowLetter RUNNING for QuestID: {questId} ({questName})");
             var quest = Find.QuestManager.QuestsListForReading.FirstOrDefault(q => q.id == questId);
             if (quest != null)
             {
                 try
                 {
                     isSyncingLetter = true;
+                    Log.Message($"{LOG_PREFIX} Found quest, calling QuestUtility.SendLetterQuestAvailable...");
                     QuestUtility.SendLetterQuestAvailable(quest);
+                    Log.Message($"{LOG_PREFIX} SendLetterQuestAvailable finished.");
+                }
+                catch (Exception e)
+                {
+                    Log.Error($"{LOG_PREFIX} EXCEPTION in SyncShowLetter: {e}");
                 }
                 finally
                 {
@@ -130,15 +172,14 @@ namespace Multiplayer.Client
             }
             else
             {
-                Log.Warning($"MP: SyncShowLetter called for quest ID {questId} ({questName}), but the quest was not found.");
+                Log.Warning($"{LOG_PREFIX} SyncShowLetter could not find quest with ID {questId}.");
             }
         }
 
         #endregion
 
-        #region Quest Interaction Sync (Accept/Decline etc.)
+        #region Quest Interaction Sync
 
-        // This patch intercepts the local "Accept" action.
         [HarmonyPatch(typeof(Quest), nameof(Quest.Accept))]
         static class QuestAccept_Patch
         {
@@ -146,22 +187,26 @@ namespace Multiplayer.Client
             {
                 if (Multiplayer.Client != null)
                 {
-                    // Instead of running locally, send a command to the host to accept it everywhere.
+                    Log.Message($"{LOG_PREFIX} Intercepted Quest.Accept for quest {__instance.id}. Calling SyncMethod.");
                     SyncQuestAccept(__instance, by);
-                    return false; // Suppress original call
+                    return false;
                 }
                 return true;
             }
         }
 
-        // This SyncMethod ensures the "Accept" action is performed deterministically on all clients.
         [SyncMethod]
         static void SyncQuestAccept(Quest quest, Pawn by)
         {
+            Log.Message($"{LOG_PREFIX} SyncQuestAccept RUNNING for quest {quest?.id}.");
             if (quest != null && quest.State == QuestState.NotYetAccepted)
             {
-                // The original method is now called here, inside the sync lockstep.
                 quest.Accept(by);
+                Log.Message($"{LOG_PREFIX} Quest {quest.id} accepted.");
+            }
+            else
+            {
+                Log.Warning($"{LOG_PREFIX} SyncQuestAccept: Quest was null or not in correct state to be accepted.");
             }
         }
 
@@ -169,22 +214,27 @@ namespace Multiplayer.Client
 
         #region Full Quest Serialization Logic
 
-        // We only need the Read logic now, as write is handled inline.
         private static Quest ReadFullQuest(ByteReader reader)
         {
-            // Set the RNG state to match the host's before deserializing.
-            Rand.StateCompressed = reader.ReadULong();
+            ulong randState = reader.ReadULong();
+            Log.Message($"{LOG_PREFIX} ReadFullQuest: Setting Rand.State to {randState}");
+            Rand.StateCompressed = randState;
 
             byte[] data = reader.ReadPrefixedBytes();
+            Log.Message($"{LOG_PREFIX} ReadFullQuest: Deserializing from {data.Length} bytes.");
             var quest = ScribeUtil.ReadExposable<Quest>(data);
 
-            // Re-link parts to their parent quest after loading.
             if (quest != null)
             {
+                Log.Message($"{LOG_PREFIX} ReadFullQuest: Successfully deserialized quest {quest.id}. Re-linking parts...");
                 foreach (var part in quest.PartsListForReading)
                 {
                     part.quest = quest;
                 }
+            }
+            else
+            {
+                Log.Error($"{LOG_PREFIX} ReadFullQuest: ScribeUtil.ReadExposable returned NULL.");
             }
 
             return quest;
