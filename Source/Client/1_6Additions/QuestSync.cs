@@ -11,14 +11,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Verse;
+using System.IO; // Required for MemoryStream
+using System.Xml; // Required for XmlDocument
 
 namespace Multiplayer.Client
 {
     [HarmonyPatch]
     public static class QuestSync
     {
-        private static bool isExecutingSyncedQuestGeneration;
-        private static int? nextQuestIdOverride;
+        // We no longer need the isExecutingSyncedQuestGeneration flag with this approach.
 
         [HarmonyPatch(typeof(DebugActionNode), nameof(DebugActionNode.Enter))]
         static class DebugAction_GenerateQuest_Patch
@@ -29,23 +30,33 @@ namespace Multiplayer.Client
                 var questDef = DefDatabase<QuestScriptDef>.GetNamed(__instance.label, false);
                 if (questDef == null) return true;
 
+                // Host generates the quest LOCALLY first.
                 if (Multiplayer.LocalServer != null)
                 {
-                    // =========================================================================
-                    // CRITICAL FIX: Create a NEW, CLEAN slate. Do not use any pre-existing
-                    // slate from the debug action context. This prevents unsynced variables
-                    // from leaking into the generation process.
-                    // The 'points' variable is the only one required for most quest scripts.
-                    // =========================================================================
-                    var cleanSlate = new Slate();
-                    cleanSlate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
+                    try
+                    {
+                        var slate = new Slate();
+                        slate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
 
-                    ulong randState = Rand.StateCompressed;
-                    int questId = Find.UniqueIDsManager.GetNextQuestID();
+                        // Generate the quest object on the host.
+                        Quest quest = QuestGen.Generate(questDef, slate);
 
-                    byte[] slateData = WriteSlate(cleanSlate);
+                        if (quest != null)
+                        {
+                            // Now serialize the *result* into a byte array.
+                            byte[] questData = ScribeUtil.WriteExposable(quest, "quest", true);
 
-                    GenerateQuestSynced(questDef, slateData, randState, questId);
+                            // Add a debug log to show the host's quest data before sending
+                            Log.Message($"MP (Host): Generated and serialized quest '{quest.name}' (ID: {quest.id}). Data length: {questData.Length}. Broadcasting...");
+
+                            // Broadcast this data to all players (including the host).
+                            ReceiveQuestDataSynced(questData);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Error($"MP: Exception during host-side quest generation: {e}");
+                    }
                 }
 
                 Find.WindowStack.TryRemove(typeof(Dialog_Debug));
@@ -53,66 +64,53 @@ namespace Multiplayer.Client
             }
         }
 
-        [HarmonyPatch(typeof(UniqueIDsManager), nameof(UniqueIDsManager.GetNextQuestID))]
-        static class GetNextQuestID_Patch
-        {
-            static bool Prefix(ref int __result)
-            {
-                if (isExecutingSyncedQuestGeneration && nextQuestIdOverride.HasValue)
-                {
-                    __result = nextQuestIdOverride.Value;
-                    return false;
-                }
-                return true;
-            }
-        }
-
+        // This is the SyncMethod that delivers the final quest data to everyone.
         [SyncMethod]
-        public static void GenerateQuestSynced(QuestScriptDef root, byte[] slateData, ulong randState, int questId)
+        public static void ReceiveQuestDataSynced(byte[] questData)
         {
-            Quest generatedQuest = null;
             string clientName = Multiplayer.Client == null ? "SP" : (Multiplayer.LocalServer != null ? "Host" : "Client");
+            Quest quest = null;
 
             try
             {
-                isExecutingSyncedQuestGeneration = true;
-                nextQuestIdOverride = questId;
+                // =========================================================================
+                // CRITICAL CHANGE: Everyone deserializes from the same data blob.
+                // No generation logic is run on clients.
+                // ScribeUtil handles loading in an isolated context.
+                // =========================================================================
+                quest = ScribeUtil.ReadExposable<Quest>(questData);
 
-                Rand.PushState();
-                Rand.StateCompressed = randState;
-
-                Slate slate = ReadSlate(slateData);
-                if (slate == null)
+                if (quest != null)
                 {
-                    Log.Error("MP: Failed to deserialize slate for synced quest generation.");
-                    return;
-                }
+                    // Relink parts to their parent quest after loading.
+                    foreach (var part in quest.PartsListForReading)
+                    {
+                        part.quest = quest;
+                    }
 
-                generatedQuest = QuestGen.Generate(root, slate);
+                    // Add a debug log to dump the received quest for comparison.
+                    // This custom logger will work without a Scribe context.
+                    LogQuestDetails(quest, clientName);
 
-                if (generatedQuest != null)
-                {
-                    // Add a debug log to dump the generated quest XML for comparison
-                    string questXml = Scribe.saver.DebugOutputFor(generatedQuest);
-                    Log.Message($"MP ({clientName}): Generated quest '{generatedQuest.name}' with ID {generatedQuest.id}.\nXML Dump:\n{questXml}");
+                    // Add the quest to the manager. It's safe to call on the host,
+                    // as it will already have the quest from its local generation.
+                    // The Add method handles duplicates.
+                    Find.QuestManager.Add(quest);
 
-                    Find.QuestManager.Add(generatedQuest);
-
+                    // Host triggers the letter for everyone.
                     if (Multiplayer.LocalServer != null)
                     {
-                        ShowLetterSynced(generatedQuest.id);
+                        ShowLetterSynced(quest.id);
                     }
+                }
+                else
+                {
+                    Log.Error($"MP ({clientName}): Failed to deserialize quest from received data.");
                 }
             }
             catch (Exception e)
             {
-                Log.Error($"MP: Exception during synced quest generation on {clientName}: {e}");
-            }
-            finally
-            {
-                Rand.PopState();
-                nextQuestIdOverride = null;
-                isExecutingSyncedQuestGeneration = false;
+                Log.Error($"MP ({clientName}): Exception during quest deserialization: {e}");
             }
         }
 
@@ -126,61 +124,47 @@ namespace Multiplayer.Client
             }
         }
 
-        #region Slate Serialization
-
-        private static byte[] WriteSlate(Slate slate)
+        // Custom debug logger to print quest details without using Scribe.
+        public static void LogQuestDetails(Quest quest, string clientName)
         {
-            var varsField = typeof(Slate).GetField("vars", BindingFlags.NonPublic | BindingFlags.Instance);
-            var vars = (IDictionary<string, object>)varsField.GetValue(slate);
-
-            List<string> keys = vars.Keys.ToList();
-            List<object> values = keys.Select(k => vars[k]).ToList();
-
-            return ScribeUtil.WriteExposable(new SlateVars(keys, values), "slateVars");
-        }
-
-        private static Slate ReadSlate(byte[] data)
-        {
-            var slateVars = ScribeUtil.ReadExposable<SlateVars>(data);
-            var slate = new Slate();
-            if (slateVars?.keys != null && slateVars.values != null)
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"--- QUEST DUMP ({clientName}) ---");
+            sb.AppendLine($"ID: {quest.id}, Name: '{quest.name}'");
+            sb.AppendLine($"Root Def: {quest.root.defName}");
+            sb.AppendLine($"Description: {quest.description.Resolve()}");
+            sb.AppendLine($"Challenge Rating: {quest.challengeRating}");
+            sb.AppendLine("Parts:");
+            foreach (var part in quest.PartsListForReading)
             {
-                for (int i = 0; i < slateVars.keys.Count; i++)
+                sb.AppendLine($"  - {part.GetType().Name} (Index: {part.Index})");
+                // Log a key detail for some common parts to help identify differences.
+                if (part is QuestPart_WorldObjectTimeout timeout)
                 {
-                    slate.Set(slateVars.keys[i], slateVars.values[i]);
+                    sb.AppendLine($"    Timeout Ticks: {timeout.delayTicks}");
+                    sb.AppendLine($"    WorldObject: {timeout.worldObject?.GetUniqueLoadID() ?? "NULL"}");
+                }
+                if (part is QuestPart_Choice choice)
+                {
+                    var reward = choice.choices.FirstOrDefault()?.rewards.FirstOrDefault();
+                    if (reward is Reward_Items itemReward)
+                    {
+                        sb.AppendLine($"    Reward Items: {string.Join(", ", itemReward.items.Select(i => i.LabelCap))}");
+                    }
                 }
             }
-            return slate;
+            sb.AppendLine("--------------------------");
+            Log.Message(sb.ToString());
         }
-
-        private class SlateVars : IExposable
-        {
-            public List<string> keys;
-            public List<object> values;
-
-            public SlateVars() { }
-            public SlateVars(List<string> keys, List<object> values)
-            {
-                this.keys = keys;
-                this.values = values;
-            }
-
-            public void ExposeData()
-            {
-                Scribe_Collections.Look(ref keys, "keys", LookMode.Value);
-                Scribe_Collections.Look(ref values, "values", LookMode.Deep);
-            }
-        }
-        #endregion
 
         #region Quest Interaction Sync
 
+        // This part remains the same as it correctly syncs player actions.
         [HarmonyPatch(typeof(Quest), nameof(Quest.Accept))]
         static class QuestAccept_Patch
         {
             static bool Prefix(Quest __instance, Pawn by)
             {
-                if (Multiplayer.Client != null && !isExecutingSyncedQuestGeneration)
+                if (Multiplayer.Client != null)
                 {
                     SyncQuestAccept(__instance.id, by);
                     return false;
