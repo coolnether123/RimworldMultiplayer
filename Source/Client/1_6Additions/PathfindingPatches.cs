@@ -1,6 +1,7 @@
 // Multiplayer/Client/Paths/PathfindingPatches.cs
 
 using HarmonyLib;
+using System.Linq;
 using Verse;
 using Verse.AI;
 
@@ -35,22 +36,30 @@ namespace Multiplayer.Client
             if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out PawnPath outPath))
             {
                 __instance.DisposeAndClearCurPathRequest();
-
                 if (outPath.Found)
                 {
-                    // DEBUG: The host found a valid path. Announce the intention to sync.
-                    Log.Message($"[HOST] {__instance.pawn?.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Syncing now...");
+                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Syncing now...");
 
-                    var pathNodes = outPath.NodesReversed.GetRange(0, outPath.NodesReversed.Count);
-                    SyncedActions.SetPawnPath(__instance.pawn, pathNodes, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
+                    // Manually serialize the path nodes into a simple int array
+                    var nodes = outPath.NodesReversed.ToList();
+                    var nodeData = new int[nodes.Count * 3];
+                    for (int i = 0; i < nodes.Count; i++)
+                    {
+                        nodeData[i * 3] = nodes[i].x;
+                        nodeData[i * 3 + 1] = nodes[i].y;
+                        nodeData[i * 3 + 2] = nodes[i].z;
+                    }
+
+                    // Call the new, raw data sync method
+                    SyncedActions.SetPawnPathRaw(__instance.pawn, nodeData, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
                 }
                 else
                 {
-                    // DEBUG: The host's pathfinder failed. This is also important to know.
-                    Log.Message($"[HOST] {__instance.pawn?.LabelShortCap}: Path NOT found. Pather will fail.");
+                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path NOT found. Pather will fail.");
+                    // Send an empty path to ensure clients also fail their pathing
+                    SyncedActions.SetPawnPathRaw(__instance.pawn, new int[0], 0, false);
                 }
-
-                outPath.Dispose(); // Release the locally-generated path from the pool.
+                outPath.Dispose();
             }
 
             return true; // Let the original PatherTick run for the host to handle movement.

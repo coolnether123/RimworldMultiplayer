@@ -39,12 +39,21 @@ namespace Multiplayer.Client
             job.verbToUse = reconstructedJob.verbToUse;
         }
 
+        // MODIFIED METHOD: The original SetPawnPath is replaced by one that takes raw data.
         [SyncMethod]
-        public static void SetPawnPath(Pawn pawn, List<IntVec3> nodes, int cost, bool usedRegionHeuristics)
+        public static void SetPawnPathRaw(Pawn pawn, int[] nodeData, int cost, bool usedRegionHeuristics)
         {
-            Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} is RECEIVING path with {nodes?.Count ?? 0} nodes from host.");
+            // Reconstruct the node list from the raw int array
+            var nodes = new List<IntVec3>(nodeData.Length / 3);
+            for (int i = 0; i < nodeData.Length; i += 3)
+            {
+                nodes.Add(new IntVec3(nodeData[i], nodeData[i + 1], nodeData[i + 2]));
+            }
 
-            if (pawn == null || pawn.pather == null || nodes == null) return;
+            // The rest of the logic is the same, but now it uses the reconstructed list
+            Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} is RECEIVING path with {nodes.Count} nodes from host.");
+
+            if (pawn == null || pawn.pather == null) return;
 
             if (pawn.pather.curPath != null)
             {
