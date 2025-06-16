@@ -61,21 +61,21 @@ namespace Multiplayer.Client
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
         {
             if (Multiplayer.Client == null || jobGiver == null) return true;
-
             if (Multiplayer.LocalServer != null)
             {
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                var jobParams = new JobParams(newJob);
+                // Manually call for local client in case of host+player
+                SyncedActions.StartJobAI(jobParams, __instance.pawn);
                 return true;
             }
-
             return false;
         }
 
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
             if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
-
-            SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
+            var jobParams = new JobParams(job);
+            SyncedActions.TakeOrderedJob(jobParams, __instance.pawn, tag);
             return false;
         }
 
@@ -106,10 +106,21 @@ namespace Multiplayer.Client
                 // If the new path is meaningfully different from the last one we sent, sync it.
                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
                 {
-                    Log.Message($"[HOST] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Detected new path. Syncing {newSurrogate.NodeCount} nodes.");
+                    Log.Message($"[HOST] Pawn:{pawn.LabelShortCap} | Detected new path. Syncing {newSurrogate.NodeCount} nodes."); SyncedActions.SetPawnPath(pawn, newSurrogate);
+
                     SyncedActions.SetPawnPath(pawn, newSurrogate);
 
-                    // Update the cache of what we've sent.
+                    var realLocalServer = Multiplayer.LocalServer;
+                    Multiplayer.LocalServer = null;
+                    try
+                    {
+                        SyncedActions.SetPawnPath(pawn, newSurrogate);
+                    }
+                    finally
+                    {
+                        Multiplayer.LocalServer = realLocalServer;
+                    }
+
                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
                 }
             }
@@ -240,7 +251,6 @@ namespace Multiplayer.Client
         private List<IntVec3> nodes;
         private int totalCost;
 
-
         public int NodeCount => nodes?.Count ?? 0;
 
         public PawnPathSurrogate() { }
@@ -255,7 +265,6 @@ namespace Multiplayer.Client
             if (this.NodeCount == 0) return true;
             if (this.nodes[0] != other.nodes[0]) return false;
             if (this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1]) return false;
-
             return true;
         }
 
@@ -304,7 +313,46 @@ namespace Multiplayer.Client
     public static class SyncedActions
     {
         [SyncMethod]
-        public static void StartJobAI(Pawn pawn, JobParams jobParams)
+        public static void StartJobAI(JobParams jobParams, Pawn pawn)
+        {
+            if (Multiplayer.LocalServer != null)
+            {
+                var realLocalServer = Multiplayer.LocalServer;
+                Multiplayer.LocalServer = null;
+                try
+                {
+                    StartJobAI_Impl(pawn, jobParams);
+                }
+                finally
+                {
+                    Multiplayer.LocalServer = realLocalServer;
+                }
+            }
+            StartJobAI_Impl(pawn, jobParams);
+        }
+
+
+
+        public static void TakeOrderedJob(JobParams jobParams, Pawn pawn, JobTag? tag)
+        {
+            if (Multiplayer.LocalServer != null)
+            {
+                var realLocalServer = Multiplayer.LocalServer;
+                Multiplayer.LocalServer = null;
+                try
+                {
+                    TakeOrderedJob_Impl(pawn, jobParams, tag);
+                }
+                finally
+                {
+                    Multiplayer.LocalServer = realLocalServer;
+                }
+            }
+            TakeOrderedJob_Impl(pawn, jobParams, tag);
+        }
+
+        [SyncMethod]
+        private static void StartJobAI_Impl(Pawn pawn, JobParams jobParams)
         {
             if (pawn == null || pawn.jobs == null || pawn.Dead) return;
             Job job = jobParams.ToJob();
@@ -315,7 +363,7 @@ namespace Multiplayer.Client
         }
 
         [SyncMethod]
-        public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
+        private static void TakeOrderedJob_Impl(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
             if (pawn == null || pawn.jobs == null) return;
             Job job = jobParams.ToJob();
@@ -331,10 +379,9 @@ namespace Multiplayer.Client
             // This method now runs on the client.
             string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
 
-            // Safety check: only clients should process this. The host should never receive paths.
+
             if (Multiplayer.LocalServer != null)
             {
-                Log.Warning($"[HOST] Erroneously received a SetPawnPath call for {pawn?.LabelShortCap}. Ignoring.");
                 return;
             }
 
