@@ -24,21 +24,18 @@ namespace Multiplayer.Client
             var harmony = Multiplayer.harmony;
             Log.Message("[Multiplayer] Applying FINAL pathfinding synchronization patches...");
 
-            // This single patch now controls all job assignments.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(Pawn_JobTracker_StartJob_Patch), nameof(Pawn_JobTracker_StartJob_Patch.Prefix))
             );
             Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
 
-            /* This patch syncs the path result from the host.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
                 prefix: new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Prefix))
             );
             Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
-            */
-            // This patch handles a combat edge case.
+
             harmony.Patch(
                 AccessTools.Method(typeof(Toils_Combat), nameof(Toils_Combat.GotoCastPosition)),
                 postfix: new HarmonyMethod(typeof(Toils_Combat_GotoCastPosition_Patch), nameof(Toils_Combat_GotoCastPosition_Patch.Postfix))
@@ -89,20 +86,22 @@ namespace Multiplayer.Client
             // This patch should ONLY run on the host to generate and send the path.
             if (Multiplayer.LocalServer != null)
             {
+                // HOST LOGIC: Find a path and sync it.
                 if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out PawnPath outPath))
                 {
-                    // Got a path result, clear the request.
                     __instance.DisposeAndClearCurPathRequest();
-
-                    // Create the surrogate that will be sent over the network.
                     var surrogate = new PawnPathSurrogate(outPath);
                     Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path result found. Triggering sync for path with {surrogate.NodeCount} nodes.");
-
-                    // Call the sync method.
-                    //SyncedActions.SetPawnPath(__instance.pawn, surrogate);
-
-                    // Clean up the host's local path object.
+                    SyncedActions.SetPawnPath(__instance.pawn, surrogate);
                     outPath.Dispose();
+                }
+            }
+            else // CLIENT LOGIC
+            {
+                // If a client is waiting for a path, it should do nothing.
+                if (__instance.curPathRequest != null)
+                {
+                    return false;
                 }
             }
 
@@ -348,7 +347,7 @@ namespace Multiplayer.Client
             job.verbToUse = reconstructedJob.verbToUse;
         }
 
-        /*
+        
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
@@ -370,7 +369,7 @@ namespace Multiplayer.Client
             {
                 pawn.pather.PatherFailed();
             }
-        }*/
+        }
     }
 
     //############################################################################
