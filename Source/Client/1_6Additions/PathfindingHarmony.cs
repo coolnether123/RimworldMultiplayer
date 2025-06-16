@@ -25,7 +25,7 @@ namespace Multiplayer.Client
 
             // === Patch for Path Result Processing ===
             var patherTickOriginal = AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick));
-            var patherTickPrefix = new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Prefix));
+            var patherTickPrefix = new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Postfix));
             harmony.Patch(patherTickOriginal, prefix: patherTickPrefix);
             Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
 
