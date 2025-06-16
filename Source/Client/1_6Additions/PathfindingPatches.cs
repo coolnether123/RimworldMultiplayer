@@ -1,4 +1,4 @@
-// Multiplayer/Client/Paths/PathfindingPatches.cs (NEW FILE)
+// Multiplayer/Client/Paths/PathfindingPatches.cs
 
 using HarmonyLib;
 using Verse;
@@ -6,56 +6,59 @@ using Verse.AI;
 
 namespace Multiplayer.Client
 {
-    // This patch intercepts when a path result is ready to be used.
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
     public static class Pawn_PathFollower_PatherTick_Patch
     {
         static bool Prefix(Pawn_PathFollower __instance)
         {
-            // If not in multiplayer, or if a sync command is being executed, run original.
             if (!Multiplayer.ShouldSync) return true;
 
-            // Only the host is allowed to process a path result from the pathfinder.
+            // DEBUG: Log entry for every pawn this is called for.
+            // Note: This can be spammy, but is essential for debugging.
+            if (Multiplayer.settings.showDevInfo)
+                Log.Message($"PatherTick for {__instance.pawn?.LabelShortCap ?? "NULL PAWN"} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")}");
+
+            // Client logic: Wait for the host's command.
             if (Multiplayer.LocalServer == null)
             {
-                // If the client has a path request pending, just wait.
-                if (__instance.curPathRequest != null) return false;
-                // Otherwise, let the original logic run (e.g., to handle arriving at destination).
-                return true;
+                if (__instance.curPathRequest != null)
+                {
+                    // DEBUG: Confirm the client is correctly waiting.
+                    if (Multiplayer.settings.showDevInfo)
+                        Log.Message($" - Client {__instance.pawn?.LabelShortCap} is waiting for host path.");
+                    return false; // Stop the client from processing its own path result.
+                }
+                return true; // Let the original method run for other logic (like arrival checks).
             }
 
-            // HOST LOGIC
-            PawnPath outPath;
-            // Check if the host's pathfinder has finished a job.
-            if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out outPath))
+            // Host logic: Find a path and sync it.
+            if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out PawnPath outPath))
             {
-                // The host has a new path.
-                __instance.curPathRequest.ClaimCalculatedPath(); // Prevent it from being used twice
                 __instance.DisposeAndClearCurPathRequest();
 
                 if (outPath.Found)
                 {
-                    // Path found! Let's sync it.
-                    var traverse = Traverse.Create(outPath);
+                    // DEBUG: The host found a valid path. Announce the intention to sync.
+                    Log.Message($"[HOST] {__instance.pawn?.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Syncing now...");
+
+                    var pathNodes = outPath.NodesReversed.GetRange(0, outPath.NodesReversed.Count);
                     SyncedPaths.SetPawnPath(
                         __instance.pawn,
-                        outPath.NodesReversed.GetRange(0, outPath.NodesReversed.Count), // Send a copy
+                        pathNodes,
                         (int)outPath.TotalCost,
                         outPath.UsedRegionHeuristics
                     );
                 }
                 else
                 {
-                    // Path not found. The vanilla code handles this by calling PatherFailed.
-                    // We let it run.
+                    // DEBUG: The host's pathfinder failed. This is also important to know.
+                    Log.Message($"[HOST] {__instance.pawn?.LabelShortCap}: Path NOT found. Pather will fail.");
                 }
 
-                outPath.Dispose(); // We've synced it, so we can release it from the pool.
+                outPath.Dispose(); // Release the locally-generated path from the pool.
             }
 
-            // Let the rest of the PatherTick logic run for the host.
-            // This is important for handling movement, collisions, etc.
-            return true;
+            return true; // Let the original PatherTick run for the host to handle movement.
         }
     }
 }
