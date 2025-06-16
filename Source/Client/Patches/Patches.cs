@@ -1108,7 +1108,7 @@ namespace Multiplayer.Client
     // END LISTER HAULABLES DESYNC FIX
     //======================================================================================
 
-
+    /*
     /// <summary>
     /// This patch makes all relevant CARAVAN tickers deterministic.
     /// </summary>
@@ -1158,7 +1158,7 @@ namespace Multiplayer.Client
         }
     }
 
-    /*
+    
     //======================================================================================
     // BEGIN GAME CONDITION DESYNC FIX
     //======================================================================================
