@@ -720,31 +720,16 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Caravan_NeedsTracker), nameof(Caravan_NeedsTracker.NeedsTrackerTickInterval))]
     public static class Caravan_NeedsTracker_Tick_Sync
     {
-        /// <summary>
-        /// Before the needs logic runs, we push a new state to the random number generator.
-        /// The state is seeded with the caravan's unique ID, which is deterministic.
-        /// We use a direct parameter reference `___caravan` for efficiency.
-        /// </summary>
+        // Harmony will correctly inject the public field `caravan` from the instance.
         static void Prefix(Caravan ___caravan)
         {
-            if (Multiplayer.Client != null)
-            {
-                // Seed with the caravan's unique ID to ensure deterministic results.
+            if (Multiplayer.Client != null && ___caravan != null)
                 Rand.PushState(___caravan.ID);
-            }
         }
-
-        /// <summary>
-        /// After the needs logic has finished, we pop the state to restore the RNG.
-        /// This prevents our deterministic seed from affecting other parts of the game.
-        /// A finalizer is used to guarantee this runs even if the original method has an error.
-        /// </summary>
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
@@ -767,31 +752,16 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.ForageTrackerTickInterval))]
     public static class Caravan_ForageTracker_Tick_Sync
     {
-        /// <summary>
-        /// Before the foraging logic runs, we push a new state to the random number generator.
-        /// The state is seeded with the caravan's unique ID, which is deterministic.
-        /// We use a direct parameter reference `___caravan` for efficiency.
-        /// </summary>
+        // Harmony will correctly inject the private field `caravan` from the instance.
         static void Prefix(Caravan ___caravan)
         {
-            if (Multiplayer.Client != null)
-            {
-                // Seed with the caravan's unique ID to ensure deterministic foraging results.
+            if (Multiplayer.Client != null && ___caravan != null)
                 Rand.PushState(___caravan.ID);
-            }
         }
-
-        /// <summary>
-        /// After the foraging logic has finished, we pop the state to restore the RNG.
-        /// This prevents our deterministic seed from affecting other parts of the game.
-        /// A finalizer is used to guarantee this runs even if the original method has an error.
-        /// </summary>
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
@@ -887,20 +857,16 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(CaravanDrugPolicyUtility), nameof(CaravanDrugPolicyUtility.CheckTakeScheduledDrugs))]
     public static class Caravan_DrugPolicyUtility_Tick_Sync
     {
+        // This is a static method, so Harmony injects the first parameter named `caravan`.
         static void Prefix(Caravan caravan)
         {
-            if (Multiplayer.Client != null)
-            {
+            if (Multiplayer.Client != null && caravan != null)
                 Rand.PushState(caravan.ID);
-            }
         }
-
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
@@ -922,20 +888,16 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(CaravanTendUtility), nameof(CaravanTendUtility.CheckTend))]
     public static class Caravan_TendUtility_Tick_Sync
     {
+        // This is a static method, so Harmony injects the first parameter named `caravan`.
         static void Prefix(Caravan caravan)
         {
-            if (Multiplayer.Client != null)
-            {
+            if (Multiplayer.Client != null && caravan != null)
                 Rand.PushState(caravan.ID);
-            }
         }
-
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
@@ -956,21 +918,16 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Caravan_BabyTracker), nameof(Caravan_BabyTracker.TickInterval))]
     public static class Caravan_BabyTracker_Tick_Sync
     {
-        // The caravan object is private in Caravan_BabyTracker, so we use `___caravan` to access it.
+        // Harmony will correctly inject the private field `caravan` from the instance.
         static void Prefix(Caravan ___caravan)
         {
-            if (Multiplayer.Client != null)
-            {
+            if (Multiplayer.Client != null && ___caravan != null)
                 Rand.PushState(___caravan.ID);
-            }
         }
-
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
@@ -1016,61 +973,111 @@ namespace Multiplayer.Client
     //======================================================================================
 
     //======================================================================================
-    // BEGIN STORYTELLER DESYNC FIX
+    // BEGIN DETERMINISTIC TICKER FIXES (Replaces all previous _Tick_Sync patches)
     //======================================================================================
 
     /// <summary>
-    /// This patch fixes a desync caused by the global Storyteller. When the storyteller
-    /// ticks in the world context (not tied to a specific map), its random decisions are
-    /// not seeded, causing divergence. This patch seeds the storyteller and story watcher
-    /// ticks with the multiplayer world time.
+    /// This patch makes all relevant MAP-LEVEL tickers deterministic.
+    /// It targets every known MapComponent or similar class whose Tick method uses randomness.
+    /// Each is seeded with the map's async time.
     /// </summary>
     [HarmonyPatch]
-    public static class Storyteller_Tick_Sync
+    public static class DeterministicMapTickers_Sync
     {
         static IEnumerable<MethodBase> TargetMethods()
         {
-            // These are all global, world-level tickers that use randomness.
-            // We seed all of them here to ensure deterministic outcomes.
+            yield return AccessTools.Method(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick));
+            yield return AccessTools.Method(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick));
+            yield return AccessTools.Method(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick));
+            yield return AccessTools.Method(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick));
+            yield return AccessTools.Method(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick));
+            yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
+            yield return AccessTools.Method(typeof(LordManager), nameof(LordManager.LordManagerTick));
+            yield return AccessTools.Method(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick));
+        }
+
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+                Rand.PushState(___map.AsyncTime().mapTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    /// <summary>
+    /// This patch makes all relevant WORLD-LEVEL tickers deterministic.
+    /// It targets every known WorldComponent or global manager whose Tick method uses randomness.
+    /// Each is seeded with the world's async time.
+    /// </summary>
+    [HarmonyPatch]
+    public static class DeterministicWorldTickers_Sync
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
             yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
             yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
             yield return AccessTools.Method(typeof(QuestManager), nameof(QuestManager.QuestManagerTick));
             yield return AccessTools.Method(typeof(WorldObjectsHolder), nameof(WorldObjectsHolder.WorldObjectsHolderTick));
-
             yield return AccessTools.Method(typeof(FactionManager), nameof(FactionManager.FactionManagerTick));
             yield return AccessTools.Method(typeof(WorldPawns), nameof(WorldPawns.WorldPawnsTick));
             yield return AccessTools.Method(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick));
-
+            yield return AccessTools.Method(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.WorldComponentTick));
         }
 
-        /// <summary>
-        /// This prefix seeds the RNG with the global multiplayer world tick count.
-        /// It runs before any of the targeted methods.
-        /// </summary>
         static void Prefix()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
-            }
         }
-
-        /// <summary>
-        /// The finalizer ensures the RNG state is always restored.
-        /// </summary>
         static void Finalizer()
         {
             if (Multiplayer.Client != null)
-            {
                 Rand.PopState();
-            }
         }
     }
 
-    //======================================================================================
-    // END STORYTELLER DESYNC FIX
-    //======================================================================================
     /*
+    /// <summary>
+    /// This patch makes all relevant CARAVAN tickers deterministic.
+    /// </summary>
+    [HarmonyPatch]
+    public static class DeterministicCaravanTickers_Sync
+    {
+        static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.ForageTrackerTickInterval));
+            yield return AccessTools.Method(typeof(Caravan_NeedsTracker), nameof(Caravan_NeedsTracker.NeedsTrackerTickInterval));
+            yield return AccessTools.Method(typeof(CaravanDrugPolicyUtility), nameof(CaravanDrugPolicyUtility.CheckTakeScheduledDrugs));
+            yield return AccessTools.Method(typeof(CaravanTendUtility), nameof(CaravanTendUtility.CheckTend));
+            yield return AccessTools.Method(typeof(Caravan_BabyTracker), nameof(Caravan_BabyTracker.TickInterval));
+        }
+
+        // The Prefix now correctly requests the private field `caravan` from the instance (`__instance`)
+        // of the class being patched (e.g., Caravan_ForageTracker, Caravan_NeedsTracker).
+        // Note for DrugPolicyUtility and TendUtility, the first parameter is the caravan, so Harmony
+        // will correctly map that. For the others, it will find the field.
+        static void Prefix(Caravan ___caravan, Caravan caravan = null)
+        {
+            // Use the field if it exists, otherwise use the parameter. This covers all cases.
+            var targetCaravan = ___caravan ?? caravan;
+
+            if (Multiplayer.Client != null && targetCaravan != null)
+                Rand.PushState(targetCaravan.ID);
+        }
+
+        static void Finalizer()
+        {
+            // We need to check if the prefix was successful before popping.
+            // A simple way is to only pop if we're in multiplayer, as the prefix only pushes in MP.
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+    
     //======================================================================================
     // BEGIN GAME CONDITION DESYNC FIX
     //======================================================================================
@@ -1107,7 +1114,7 @@ namespace Multiplayer.Client
     //======================================================================================
     // END GAME CONDITION DESYNC FIX
     //======================================================================================
-    */
+    
 
     //======================================================================================
     // BEGIN DETERMINISTIC MAP TICKER FIXES (Replaces old DeterministicMapTickers patch)
@@ -1253,7 +1260,7 @@ namespace Multiplayer.Client
             if (Multiplayer.Client != null)
                 Rand.PopState();
         }
-    }
+    }*/
 
     //======================================================================================
     // END DETERMINISTIC MAP TICKER FIXES
