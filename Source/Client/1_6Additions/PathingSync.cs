@@ -319,12 +319,12 @@ namespace Multiplayer.Client
             if (this.NodeCount != other.NodeCount) return false;
             if (this.totalCost != other.totalCost) return false;
 
-            // Check if the first and last nodes are the same. This is a good enough heuristic
-            // to catch most meaningful path changes without comparing every single node.
-            if (this.nodes[0] != other.nodes[0] || this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1])
-            {
-                return false;
-            }
+            // Handle empty paths
+            if (this.NodeCount == 0) return true; // Both are empty, so they are the same.
+
+            // Heuristic check for first and last nodes
+            if (this.nodes[0] != other.nodes[0]) return false;
+            if (this.NodeCount > 1 && this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1]) return false;
 
             return true;
         }
