@@ -1,4 +1,4 @@
-// In file: SyncedJobGiver.cs
+// In file: SyncedJobGiver.cs (or a new file like SyncedJobs.cs)
 
 using Multiplayer.API;
 using Verse;
@@ -6,8 +6,7 @@ using Verse.AI;
 
 namespace Multiplayer.Client
 {
-    // Make this class partial so it can be extended in other files.
-    public static partial class SyncedJobs
+    public static class SyncedJobs
     {
         [SyncMethod]
         public static void StartJob(Pawn pawn, JobParams jobParams, JobCondition lastJobEndCondition)
@@ -16,11 +15,20 @@ namespace Multiplayer.Client
 
             Job job = jobParams.ToJob();
 
-            // Use DontSync to prevent our StartJob patch from firing again and causing an infinite loop.
             using (new Multiplayer.DontSync())
             {
                 pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, false, true, job.jobGiverThinkTree, null, false);
             }
+        }
+
+        [SyncMethod]
+        public static void SetJobVerb(Pawn pawn, JobParams jobParams)
+        {
+            Job job = pawn?.CurJob;
+            if (job == null) return;
+
+            var reconstructedJob = jobParams.ToJob();
+            job.verbToUse = reconstructedJob.verbToUse;
         }
     }
 }

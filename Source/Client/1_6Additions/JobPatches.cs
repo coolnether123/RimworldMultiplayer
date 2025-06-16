@@ -1,7 +1,7 @@
-// In file: JobPatches.cs
+// Multiplayer/Client/Patches/JobPatches.cs
 
 using HarmonyLib;
-using Multiplayer.API;
+using Multiplayer.API; // Required for [SyncMethod]
 using Verse;
 using Verse.AI;
 
@@ -22,25 +22,13 @@ namespace Multiplayer.Client
                 var pawn = __result.actor;
                 var job = pawn.CurJob;
 
+                // If the original logic chose a verb, and we need to sync it...
                 if (job.verbToUse != null && Multiplayer.ShouldSync)
                 {
-                    // Sync the verb that was chosen by the toil's logic.
-                    SyncedJobs.SetJobVerb(job, new JobParams(job));
+                    // Call the corrected sync method, passing the PAWN, not the JOB.
+                    SyncedJobs.SetJobVerb(pawn, new JobParams(job));
                 }
             };
-        }
-    }
-
-    // Add the 'partial' keyword here so it can merge with the other SyncedJobs definition.
-    public static partial class SyncedJobs
-    {
-        [SyncMethod]
-        public static void SetJobVerb(Job job, JobParams jobParams)
-        {
-            if (job == null) return;
-
-            var reconstructedJob = jobParams.ToJob();
-            job.verbToUse = reconstructedJob.verbToUse;
         }
     }
 }
