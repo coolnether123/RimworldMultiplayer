@@ -994,6 +994,8 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
             yield return AccessTools.Method(typeof(LordManager), nameof(LordManager.LordManagerTick));
             yield return AccessTools.Method(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick));
+
+
         }
 
         static void Prefix(Map ___map)
@@ -1039,6 +1041,42 @@ namespace Multiplayer.Client
                 Rand.PopState();
         }
     }
+
+    //======================================================================================
+    // BEGIN LISTER HAULABLES DESYNC FIX
+    //======================================================================================
+
+    /// <summary>
+    /// This patch fixes a subtle desync caused by the haulable items lister.
+    /// The `ListerHaulablesTick` method uses a tick-based check (`% 250`) and relies on
+    /// list iteration order, which is not guaranteed to be deterministic. This can lead
+    /// to items being marked as haulable on different ticks for different clients.
+    /// Seeding this entire method ensures the process is identical for everyone.
+    /// </summary>
+    [HarmonyPatch(typeof(ListerHaulables), nameof(ListerHaulables.ListerHaulablesTick))]
+    public static class ListerHaulables_Tick_Sync
+    {
+        // Harmony will correctly find and inject the private field `map` from the instance.
+        static void Prefix(Map ___map)
+        {
+            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
+            {
+                Rand.PushState(___map.AsyncTime().mapTicks);
+            }
+        }
+
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+            {
+                Rand.PopState();
+            }
+        }
+    }
+
+    //======================================================================================
+    // END LISTER HAULABLES DESYNC FIX
+    //======================================================================================
 
     /*
     /// <summary>
