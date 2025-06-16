@@ -45,15 +45,30 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPathBytes(Pawn pawn, byte[] pathBytes, int cost, bool usedRegionHeuristics)
         {
-            // NEW: Deserialize the path data from the byte array.
+            Log.Message($"[SYNC-DEBUG] SetPawnPathBytes called for {pawn?.LabelShortCap}. Received byte array with length: {pathBytes?.Length ?? -1}");
+
             var nodes = new List<IntVec3>();
             if (pathBytes != null && pathBytes.Length > 0)
             {
                 var reader = new ByteReader(pathBytes);
-                int count = reader.ReadInt32();
-                for (int i = 0; i < count; i++)
+                // Add a try-catch block for safety during debugging
+                try
                 {
-                    nodes.Add(new IntVec3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()));
+                    int count = reader.ReadInt32();
+                    if (count < 0 || count > 1000) // Sanity check
+                    {
+                        Log.Error($"[SYNC-DEBUG] Invalid node count {count} from pathBytes of length {pathBytes.Length}");
+                        count = 0;
+                    }
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        nodes.Add(new IntVec3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()));
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Log.Error($"[SYNC-DEBUG] Exception deserializing path bytes: {e}");
                 }
             }
 

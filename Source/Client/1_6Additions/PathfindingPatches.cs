@@ -48,6 +48,8 @@ namespace Multiplayer.Client
                         }
                         byte[] pathBytes = writer.ToArray();
 
+                        Log.Message($"[HOST-DEBUG] Path for {__instance.pawn.LabelShortCap} found with {nodes.Count} nodes. Serialized to byte array of length: {pathBytes.Length}. Triggering sync...");
+
                         // Call the sync method with the serialized byte array.
                         SyncedActions.SetPawnPathBytes(__instance.pawn, pathBytes, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
                     }
