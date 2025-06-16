@@ -51,15 +51,23 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
     public static class Pawn_JobTracker_StartJob_Patch
     {
-        public static bool Prefix(Pawn_JobTracker __instance, ThinkNode jobGiver)
+        public static bool Prefix(ThinkNode jobGiver)
         {
-            if (Multiplayer.Client == null || Multiplayer.dontSync) return true;
-            // Only block AI jobs (which have a jobGiver) on the client.
-            // Let the host's AI run, and let player commands run everywhere for now.
-            if (Multiplayer.LocalServer == null && jobGiver != null)
+            if (Multiplayer.Client == null) return true;
+
+            // An AI job will have a jobGiver. A player-ordered one will not.
+            bool isAIJob = jobGiver != null;
+
+            if (isAIJob)
             {
-                return false;
+                // If this is a client, block the AI job. The host will provide one.
+                if (Multiplayer.LocalServer == null)
+                {
+                    return false;
+                }
             }
+
+            // Allow the host to run AI jobs, and allow everyone to run non-AI jobs (which are handled by the other patch).
             return true;
         }
     }
@@ -77,7 +85,7 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null || Multiplayer.dontSync || !__instance.pawn.Spawned) return true;
 
-            // This logic is now ONLY for the host.
+            // Only the host sends paths.
             if (Multiplayer.LocalServer != null)
             {
                 // The host's PatherTick runs normally. We observe it.
@@ -373,8 +381,17 @@ namespace Multiplayer.Client
                 pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, false, true, job.jobGiverThinkTree);
             }
         }
+        [SyncMethod]
+        public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
+        {
+            if (pawn == null || pawn.jobs == null) return;
+            Job job = jobParams.ToJob();
+            using (new Multiplayer.DontSync())
+            {
+                pawn.jobs.TryTakeOrderedJob(job, tag);
+            }
+        }
 
-        
 
         [SyncMethod]
         public static void SetJobVerb(Pawn pawn, JobParams jobParams)
@@ -389,6 +406,7 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
+            if (Multiplayer.LocalServer != null) return; // Host doesn't need to receive its own paths
             if (pawn == null || pawn.pather == null || surrogate == null) return;
 
             PawnPath path = surrogate.ToPawnPath(pawn);
