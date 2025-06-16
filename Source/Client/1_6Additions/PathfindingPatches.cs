@@ -33,9 +33,16 @@ namespace Multiplayer.Client
 
                     if (outPath.Found)
                     {
-                        Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Triggering sync...");
+                        // ===== NEW, ROBUST NODE EXTRACTION =====
+                        var nodes = new List<IntVec3>();
+                        // The path is stored in reverse, so we iterate backwards to get the correct order.
+                        for (int i = outPath.NodesLeftCount - 1; i >= 0; i--)
+                        {
+                            nodes.Add(outPath.Peek(i));
+                        }
+                        // =======================================
 
-                        var nodes = outPath.NodesReversed.ToList();
+                        Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {nodes.Count} nodes. Triggering sync...");
 
                         // NEW: Serialize the node data into a byte array immediately.
                         var writer = new ByteWriter();
