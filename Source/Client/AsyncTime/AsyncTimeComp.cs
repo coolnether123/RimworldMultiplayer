@@ -94,8 +94,6 @@ namespace Multiplayer.Client
             tickingMap = map;
             PreContext();
 
-            //SimpleProfiler.Start();
-
             try
             {
                 map.MapPreTick();
@@ -107,8 +105,9 @@ namespace Multiplayer.Client
 
                 TickMapSessions();
 
-                storyteller.StorytellerTick();
-                storyWatcher.StoryWatcherTick();
+                // The storyteller is now only ticked at the world level, not per-map.
+                // storyteller.StorytellerTick(); // DELETED
+                // storyWatcher.StoryWatcherTick(); // DELETED
 
                 QuestManagerTickAsyncTime();
 
@@ -126,8 +125,6 @@ namespace Multiplayer.Client
                 Multiplayer.game.sync.TryAddMapRandomState(map.uniqueID, randState);
                 eventCount++;
                 tickingMap = null;
-
-                //SimpleProfiler.Pause();
             }
         }
 
