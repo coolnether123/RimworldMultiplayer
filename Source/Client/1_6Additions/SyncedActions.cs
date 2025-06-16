@@ -51,7 +51,7 @@ namespace Multiplayer.Client
             }
 
             // The rest of the logic is the same, but now it uses the reconstructed list
-            Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} is RECEIVING path with {nodes.Count} nodes from host.");
+            Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {nodes.Count} nodes.");
 
             if (pawn == null || pawn.pather == null) return;
 
@@ -65,9 +65,8 @@ namespace Multiplayer.Client
 
             using (new Multiplayer.DontSync())
             {
-                pawn.pather.DisposeAndClearCurPathRequest();
                 pawn.pather.curPath = path;
-                pawn.pather.ResetToCurrentPosition();
+                pawn.pather.ResetToCurrentPosition(); // Resets pather state and starts following the new path.
             }
         }
     }
