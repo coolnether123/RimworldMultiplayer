@@ -994,6 +994,7 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick));
             yield return AccessTools.Method(typeof(LordManager), nameof(LordManager.LordManagerTick));
             yield return AccessTools.Method(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick));
+            yield return AccessTools.Method(typeof(ListerHaulables), nameof(ListerHaulables.ListerHaulablesTick));
 
 
         }
@@ -1026,7 +1027,7 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(WorldObjectsHolder), nameof(WorldObjectsHolder.WorldObjectsHolderTick));
             yield return AccessTools.Method(typeof(FactionManager), nameof(FactionManager.FactionManagerTick));
             yield return AccessTools.Method(typeof(WorldPawns), nameof(WorldPawns.WorldPawnsTick));
-            yield return AccessTools.Method(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick));
+            // GameConditionManager is patched separately below due to a different field name.
             yield return AccessTools.Method(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.WorldComponentTick));
         }
 
@@ -1034,6 +1035,35 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client != null)
                 Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null)
+                Rand.PopState();
+        }
+    }
+
+    /// <summary>
+    /// This patch specifically handles the GameConditionManager for both the world and maps,
+    /// as it has a different field name (`ownerMap`) for its map reference.
+    /// </summary>
+    [HarmonyPatch(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick))]
+    public static class GameConditionManager_Tick_Sync
+    {
+        static void Prefix(GameConditionManager __instance)
+        {
+            if (Multiplayer.Client == null) return;
+
+            // Handle both map-level and world-level game conditions
+            if (__instance.ownerMap != null)
+            {
+                if (__instance.ownerMap.AsyncTime() != null)
+                    Rand.PushState(__instance.ownerMap.AsyncTime().mapTicks);
+            }
+            else // It's the world GameConditionManager
+            {
+                Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
+            }
         }
         static void Finalizer()
         {
@@ -1078,7 +1108,7 @@ namespace Multiplayer.Client
     // END LISTER HAULABLES DESYNC FIX
     //======================================================================================
 
-    /*
+
     /// <summary>
     /// This patch makes all relevant CARAVAN tickers deterministic.
     /// </summary>
@@ -1094,28 +1124,41 @@ namespace Multiplayer.Client
             yield return AccessTools.Method(typeof(Caravan_BabyTracker), nameof(Caravan_BabyTracker.TickInterval));
         }
 
-        // The Prefix now correctly requests the private field `caravan` from the instance (`__instance`)
-        // of the class being patched (e.g., Caravan_ForageTracker, Caravan_NeedsTracker).
-        // Note for DrugPolicyUtility and TendUtility, the first parameter is the caravan, so Harmony
-        // will correctly map that. For the others, it will find the field.
-        static void Prefix(Caravan ___caravan, Caravan caravan = null)
+        // This transpiler is necessary because the target methods have different signatures.
+        // It injects a call to our seeding method at the start of each target method.
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts, MethodBase original)
         {
-            // Use the field if it exists, otherwise use the parameter. This covers all cases.
-            var targetCaravan = ___caravan ?? caravan;
+            // Inject call to PushRNGState at the start of the method
+            yield return new CodeInstruction(OpCodes.Ldarg_0); // Load `this` or the first argument (Caravan)
+            yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(DeterministicCaravanTickers_Sync), nameof(PushRNGState)));
 
-            if (Multiplayer.Client != null && targetCaravan != null)
-                Rand.PushState(targetCaravan.ID);
+            foreach (var inst in insts)
+                yield return inst;
         }
 
+        public static void PushRNGState(object obj)
+        {
+            if (Multiplayer.Client == null) return;
+
+            Caravan caravan = null;
+            if (obj is Caravan c)
+                caravan = c;
+            else
+                caravan = Traverse.Create(obj).Field("caravan").GetValue<Caravan>();
+
+            if (caravan != null)
+                Rand.PushState(caravan.ID);
+        }
+
+        // We use a finalizer on the original method, which Harmony will apply correctly.
         static void Finalizer()
         {
-            // We need to check if the prefix was successful before popping.
-            // A simple way is to only pop if we're in multiplayer, as the prefix only pushes in MP.
             if (Multiplayer.Client != null)
                 Rand.PopState();
         }
     }
-    
+
+    /*
     //======================================================================================
     // BEGIN GAME CONDITION DESYNC FIX
     //======================================================================================
