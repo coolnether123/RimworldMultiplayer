@@ -138,7 +138,7 @@ namespace Multiplayer.Client.Desyncs
     {
         static void Prefix() => DeferredStackTracing.ignoreTraces++;
         static void Finalizer() => DeferredStackTracing.ignoreTraces--;
-    }*/
+    }
     [HarmonyPatch]
     static class DeterministicMapTickers
     {
@@ -175,5 +175,5 @@ namespace Multiplayer.Client.Desyncs
                 Rand.PopState();
             }
         }
-    }
+    }*/
 }
