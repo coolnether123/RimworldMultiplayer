@@ -64,67 +64,63 @@ namespace Multiplayer.Client
     public static class WildPlantSpawner_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick))]
     public static class WildAnimalSpawner_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick))]
     public static class SteadyEnvironmentEffects_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick))]
     public static class WeatherDecider_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick))]
     public static class PassingShipManager_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick))]
     public static class UndercaveMapComponent_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(LordManager), nameof(LordManager.LordManagerTick))]
     public static class LordManager_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick))]
     public static class FireWatcher_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     [HarmonyPatch(typeof(ListerHaulables), nameof(ListerHaulables.ListerHaulablesTick))]
     public static class ListerHaulables_Tick_Sync
     {
         static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
-        static void Finalizer(Map ___map)
-        {
-            if (Multiplayer.Client != null && ___map?.AsyncTime() != null)
-                Rand.PopState();
-        }
+        static void Finalizer(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PopState(); } 
     }
 
     #endregion
