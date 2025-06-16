@@ -3,6 +3,7 @@
 using HarmonyLib;
 using Verse;
 using Verse.AI;
+using Multiplayer.Common;
 
 namespace Multiplayer.Client
 {
@@ -33,9 +34,29 @@ namespace Multiplayer.Client
             var gotoCastPositionOriginal = AccessTools.Method(typeof(Toils_Combat), nameof(Toils_Combat.GotoCastPosition));
             var gotoCastPositionPostfix = new HarmonyMethod(typeof(Toils_Combat_GotoCastPosition_Patch), nameof(Toils_Combat_GotoCastPosition_Patch.Postfix));
             harmony.Patch(gotoCastPositionOriginal, postfix: gotoCastPositionPostfix);
-            Log.Message("[Multiplayer] ... Patched Toils_Combat.GotoCastPosition");
-
-            Log.Message("[Multiplayer] Pathfinding patches applied.");
+            Multiplayer.serialization.AddSerializationHook(
+                // This hook applies only to the PawnPath type.
+                syncType => syncType.type == typeof(PawnPath),
+                // The Reader
+                (reader, syncType) =>
+                {
+                    // Read the surrogate object that the writer sent.
+                    var surrogate = SyncSerialization.ReadSync<PawnPathSurrogate>(reader as ByteReader);
+                    // Store it in a temporary field for the SyncMethod to pick up.
+                    SyncedActions.tempPathSurrogate = surrogate;
+                    // Return null because we can't create a PawnPath without a Pawn/Map.
+                    return null;
+                },
+                // The Writer
+                (writer, obj, syncType) =>
+                {
+                    // Create a surrogate from the live PawnPath object.
+                    var surrogate = new PawnPathSurrogate(obj as PawnPath);
+                    // Write the surrogate object to the stream.
+                    SyncSerialization.WriteSync(writer as ByteWriter, surrogate);
+                }
+            );
+            Log.Message("[Multiplayer] ... Registered PawnPath surrogate serializer.");
         }
     }
 }

@@ -13,6 +13,13 @@ namespace Multiplayer.Client
     // A central place for all our job and path related SyncMethods
     public static class SyncedActions
     {
+
+        // This holds the surrogate between the custom reader and the SyncMethod execution.
+        public static PawnPathSurrogate tempPathSurrogate;
+
+        // Temporary storage for data deserialized by our custom SyncWorker.
+        public static (List<IntVec3> nodes, int cost, bool usedHeuristics) tempPathData;
+
         [SyncMethod]
         public static void StartJob(Pawn pawn, JobParams jobParams, StartJobContext context)
         {
@@ -41,56 +48,40 @@ namespace Multiplayer.Client
             job.verbToUse = reconstructedJob.verbToUse;
         }
 
-        // MODIFIED METHOD: The original SetPawnPath is replaced by one that takes raw data.
         [SyncMethod]
-        public static void SetPawnPathBytes(Pawn pawn, byte[] pathBytes, int cost, bool usedRegionHeuristics)
+        // The signature takes a PawnPath, but the SyncWorker will actually pass null
+        // and populate our tempPathSurrogate field instead.
+        public static void SetPawnPath(Pawn pawn, PawnPath newPath)
         {
-            Log.Message($"[SYNC-DEBUG] SetPawnPathBytes called for {pawn?.LabelShortCap}. Received byte array with length: {pathBytes?.Length ?? -1}");
-
-            var nodes = new List<IntVec3>();
-            if (pathBytes != null && pathBytes.Length > 0)
-            {
-                var reader = new ByteReader(pathBytes);
-                // Add a try-catch block for safety during debugging
-                try
-                {
-                    int count = reader.ReadInt32();
-                    if (count < 0 || count > 1000) // Sanity check
-                    {
-                        Log.Error($"[SYNC-DEBUG] Invalid node count {count} from pathBytes of length {pathBytes.Length}");
-                        count = 0;
-                    }
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        nodes.Add(new IntVec3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()));
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Log.Error($"[SYNC-DEBUG] Exception deserializing path bytes: {e}");
-                }
-            }
-
-            Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {nodes.Count} nodes.");
-
             if (pawn == null || pawn.pather == null) return;
+
+            // Use the surrogate from our temp field to create the real path.
+            PawnPath path = tempPathSurrogate.ToPawnPath(pawn);
+
+            Log.Message($"[SYNC] {pawn.LabelShortCap} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {(path.Found ? path.NodesLeftCount : 0)} nodes.");
 
             if (pawn.pather.curPath != null)
             {
                 pawn.pather.curPath.ReleaseToPool();
             }
 
-            PawnPath path = pawn.Map.pawnPathPool.GetPath();
-            path.InitializeFromNodeList(nodes, cost, usedRegionHeuristics);
+            pawn.pather.curPath = path;
 
-            using (new Multiplayer.DontSync())
+            if (path.Found)
             {
-                pawn.pather.curPath = path;
-                pawn.pather.ResetToCurrentPosition();
+                using (new Multiplayer.DontSync())
+                {
+                    pawn.pather.ResetToCurrentPosition();
+                }
+            }
+            else
+            {
+                pawn.pather.PatherFailed();
             }
         }
     }
+
+
 
     public static class PawnPathSync_Extensions
     {
@@ -109,9 +100,9 @@ namespace Multiplayer.Client
         }
     }
 
-    public static class PawnPath_Extensions
+    public static class PawnPath_Initialization_Extensions
     {
-        public static void InitializeFromNodeList(this PawnPath path, List<IntVec3> nodes, int cost, bool usedRegionHeuristics)
+        public static void InitializeFromNodeList(this PawnPath path, List<IntVec3> nodes, int cost, bool usedHeuristics)
         {
             path.NodesReversed.Clear();
             for (int i = nodes.Count - 1; i >= 0; i--)
@@ -122,7 +113,7 @@ namespace Multiplayer.Client
             var pathTraverser = Traverse.Create(path);
             pathTraverser.Field<float>("totalCostInt").Value = cost;
             pathTraverser.Field<int>("curNodeIndex").Value = path.NodesReversed.Count - 1;
-            pathTraverser.Field<bool>("usedRegionHeuristics").Value = usedRegionHeuristics;
+            pathTraverser.Field<bool>("usedRegionHeuristics").Value = usedHeuristics;
             pathTraverser.Field<bool>("inUse").Value = true;
         }
     }
