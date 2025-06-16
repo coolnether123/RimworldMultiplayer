@@ -1,7 +1,6 @@
 // Multiplayer/Client/Patches/JobGiverPatches.cs
 
 using HarmonyLib;
-using Multiplayer.Common;
 using RimWorld;
 using Verse;
 using Verse.AI;
@@ -11,32 +10,48 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryFindAndStartJob))]
     public static class Pawn_JobTracker_TryFindAndStartJob_Patch
     {
-        static bool Prefix(Pawn_JobTracker __instance, ref Job __state)
+        // This Prefix now controls the entire job-giving process in multiplayer.
+        // It returns false to prevent the original method from EVER running for any player.
+        static bool Prefix(Pawn_JobTracker __instance)
         {
-            if (Multiplayer.Client == null) return true;
-            if (Multiplayer.LocalServer == null) return false;
+            if (Multiplayer.Client == null) return true; // Singleplayer runs the original.
 
-            // === HOST-ONLY LOGIC ===
-            __state = __instance.curJob;
-
-            Rand.PushState(Gen.HashCombineInt(__instance.pawn.thingIDNumber, __instance.pawn.Map.AsyncTime().mapTicks));
-
-            return true;
-        }
-
-        static void Finalizer(Pawn_JobTracker __instance, Job __state)
-        {
-            if (Multiplayer.LocalServer == null) return;
-
-            Rand.PopState();
-
-            Job newJob = __instance.curJob;
-            if (newJob != null && newJob != __state)
+            // Only the host should be thinking for the AI.
+            if (Multiplayer.LocalServer != null)
             {
-                var jobParams = new JobParams(newJob);
-                // Corrected: Pass the pawn from the instance (__instance.pawn)
-                SyncedJobGiver.GiveJob(__instance.pawn, jobParams);
+                Pawn pawn = __instance.pawn;
+                if (pawn.thinker == null) return false;
+
+                // Use deterministic RNG
+                Rand.PushState(Gen.HashCombineInt(pawn.thingIDNumber, pawn.Map.AsyncTime().mapTicks));
+
+                try
+                {
+                    // This is the core logic from the original game's DetermineNextJob method.
+                    ThinkResult thinkResult = pawn.thinker.MainThinkNodeRoot.TryIssueJobPackage(pawn, new JobIssueParams());
+
+                    if (thinkResult.IsValid)
+                    {
+                        // We have a valid job. Package it and send it to everyone.
+                        // We do NOT call StartJob here on the host. We wait for the sync response.
+                        var jobParams = new JobParams(thinkResult.Job);
+                        jobParams.jobGiver = thinkResult.SourceNode; // Store the source of the job
+                        jobParams.thinkTree = pawn.thinker.MainThinkTree;
+
+                        // Give the job to everyone (including ourself) through the sync system
+                        SyncedJobGiver.GiveJob(pawn, jobParams);
+                    }
+                }
+                finally
+                {
+                    // Always pop the state
+                    Rand.PopState();
+                }
             }
+
+            // Clients do nothing and wait for the host's command.
+            // Returning false skips the original method.
+            return false;
         }
     }
 }
