@@ -22,10 +22,13 @@ namespace Multiplayer.Client
                 {
                     __instance.DisposeAndClearCurPathRequest();
 
+                    // Create the surrogate object from the path.
+                    var surrogate = new PawnPathSurrogate(outPath);
+
                     Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {(outPath.Found ? outPath.NodesLeftCount : 0)} nodes. Triggering sync...");
 
-                    // Pass the PawnPath object directly. Our new hook will handle it.
-                    SyncedActions.SetPawnPath(__instance.pawn, outPath);
+                    // Call the sync method, passing the surrogate object.
+                    SyncedActions.SetPawnPath(__instance.pawn, surrogate);
 
                     outPath.Dispose();
                     return false;

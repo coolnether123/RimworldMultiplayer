@@ -1,4 +1,4 @@
-// In new file: SyncedActions.cs
+// In file: SyncedActions.cs
 
 using Multiplayer.API;
 using System.Collections.Generic;
@@ -6,32 +6,57 @@ using Verse;
 using Verse.AI;
 using HarmonyLib;
 using System.Runtime.CompilerServices;
-using Multiplayer.Common;
 
 namespace Multiplayer.Client
 {
-    // A central place for all our job and path related SyncMethods
+    // This is the data container for PawnPath.
+    public class PawnPathSurrogate : ISynchronizable
+    {
+        private bool isValid;
+        private List<IntVec3> nodes;
+        private int totalCost;
+        private bool usedRegionHeuristics;
+
+        public PawnPathSurrogate() { }
+
+        public PawnPathSurrogate(PawnPath path)
+        {
+            if (path == null || !path.Found) { isValid = false; return; }
+            isValid = true;
+            totalCost = (int)path.TotalCost;
+            usedRegionHeuristics = path.UsedRegionHeuristics;
+            nodes = new List<IntVec3>();
+            for (int i = path.NodesLeftCount - 1; i >= 0; i--) { nodes.Add(path.Peek(i)); }
+        }
+
+        public PawnPath ToPawnPath(Pawn pawn)
+        {
+            if (!isValid) return PawnPath.NotFound;
+            PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
+            newPath.InitializeFromNodeList(nodes, totalCost, usedRegionHeuristics);
+            return newPath;
+        }
+
+        public void Sync(SyncWorker worker)
+        {
+            worker.Bind(ref isValid);
+            if (!isValid) return;
+            worker.Bind(ref nodes);
+            worker.Bind(ref totalCost);
+            worker.Bind(ref usedRegionHeuristics);
+        }
+    }
+
     public static class SyncedActions
     {
-
-        // This holds the surrogate between the custom reader and the SyncMethod execution.
-        public static PawnPathSurrogate tempPathSurrogate;
-
-        // Temporary storage for data deserialized by our custom SyncWorker.
-        public static (List<IntVec3> nodes, int cost, bool usedHeuristics) tempPathData;
-
         [SyncMethod]
         public static void StartJob(Pawn pawn, JobParams jobParams, StartJobContext context)
         {
             if (pawn == null || pawn.jobs == null || pawn.Dead) return;
-
             Job job = jobParams.ToJob();
-
-            // Reconstruct all parameters from the context object
             JobCondition lastJobEndCondition = (JobCondition)context.lastJobEndConditionByte;
             JobTag? tag = context.hasTag ? new JobTag?((JobTag)context.tagValueByte) : null;
             bool? keepCarryingThingOverride = context.hasCarryOverride ? new bool?(context.carryOverrideValue) : null;
-
             using (new Multiplayer.DontSync())
             {
                 pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, context.resumeCurJobAfterwards, context.cancelBusyStances, job.jobGiverThinkTree, tag, context.fromQueue, context.canReturnCurJobToPool, keepCarryingThingOverride, context.continueSleeping, context.preToilReservationsCanFail);
@@ -43,20 +68,16 @@ namespace Multiplayer.Client
         {
             Job job = pawn?.CurJob;
             if (job == null) return;
-
             var reconstructedJob = jobParams.ToJob();
             job.verbToUse = reconstructedJob.verbToUse;
         }
 
         [SyncMethod]
-        // The signature takes a PawnPath, but the SyncWorker will actually pass null
-        // and populate our tempPathSurrogate field instead.
-        public static void SetPawnPath(Pawn pawn, PawnPath newPath)
+        public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
             if (pawn == null || pawn.pather == null) return;
 
-            // Use the surrogate from our temp field to create the real path.
-            PawnPath path = tempPathSurrogate.ToPawnPath(pawn);
+            PawnPath path = surrogate.ToPawnPath(pawn);
 
             Log.Message($"[SYNC] {pawn.LabelShortCap} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {(path.Found ? path.NodesLeftCount : 0)} nodes.");
 
@@ -81,25 +102,7 @@ namespace Multiplayer.Client
         }
     }
 
-
-
-    public static class PawnPathSync_Extensions
-    {
-        private static readonly ConditionalWeakTable<PawnPath, StrongBox<bool>> syncedPaths =
-            new ConditionalWeakTable<PawnPath, StrongBox<bool>>();
-
-        public static bool IsSynced(this PawnPath path)
-        {
-            return syncedPaths.TryGetValue(path, out var box) && box.Value;
-        }
-
-        public static void SetSynced(this PawnPath path, bool value)
-        {
-            var box = syncedPaths.GetOrCreateValue(path);
-            box.Value = value;
-        }
-    }
-
+    // This extension method is still needed by the surrogate to create the path.
     public static class PawnPath_Initialization_Extensions
     {
         public static void InitializeFromNodeList(this PawnPath path, List<IntVec3> nodes, int cost, bool usedHeuristics)
@@ -109,7 +112,6 @@ namespace Multiplayer.Client
             {
                 path.NodesReversed.Add(nodes[i]);
             }
-
             var pathTraverser = Traverse.Create(path);
             pathTraverser.Field<float>("totalCostInt").Value = cost;
             pathTraverser.Field<int>("curNodeIndex").Value = path.NodesReversed.Count - 1;
