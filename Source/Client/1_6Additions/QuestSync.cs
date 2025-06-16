@@ -1,7 +1,7 @@
 // FILE: Multiplayer/Client/Sync/QuestSync.cs
 
 using HarmonyLib;
-using LudeonTK; // Needed for DebugActionNode
+using LudeonTK;
 using Multiplayer.API;
 using Multiplayer.Common;
 using RimWorld;
@@ -19,62 +19,38 @@ namespace Multiplayer.Client
     {
         private static bool isExecutingSyncedQuestGeneration;
 
-        // ====================================================================================
-        // NEW, DIRECT PATCH ON THE DEBUG ACTION ITSELF
-        // This is our new entry point, which is more robust.
-        // ====================================================================================
         [HarmonyPatch(typeof(DebugActionNode), nameof(DebugActionNode.Enter))]
         static class DebugAction_GenerateQuest_Patch
         {
             static bool Prefix(DebugActionNode __instance)
             {
-                // We only care about multiplayer sessions.
                 if (Multiplayer.Client == null) return true;
 
-                // Check if the debug action is one of the quest generation ones.
-                // The label will be the defName of the QuestScriptDef.
                 var questDef = DefDatabase<QuestScriptDef>.GetNamed(__instance.label, false);
-                if (questDef == null)
+                if (questDef == null) return true;
+
+                if (Multiplayer.LocalServer != null)
                 {
-                    // Not a quest generation button we care about, let the original logic run.
-                    return true;
+                    var slate = new Slate();
+                    slate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
+
+                    // =========================================================================
+                    // CRITICAL FIX: The authoritative random state is now captured here,
+                    // right at the moment of user input, before anything else can run.
+                    // This is the seed that will be broadcast and used by everyone.
+                    // =========================================================================
+                    ulong randState = Rand.StateCompressed;
+
+                    byte[] slateData = WriteSlate(slate);
+
+                    GenerateQuestSynced(questDef, slateData, randState);
                 }
 
-                // We have identified a quest generation button. Take over completely.
-                Log.Message($"MP: Intercepted debug quest generation for '{questDef.defName}'.");
-
-                try
-                {
-                    // The host is responsible for initiating the sync.
-                    if (Multiplayer.LocalServer != null)
-                    {
-                        // Create the slate with the 'points' variable, which is what the quest generator expects.
-                        var slate = new Slate();
-                        slate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
-
-                        // Capture the current random state.
-                        ulong randState = Rand.StateCompressed;
-
-                        // Serialize the slate for transport.
-                        byte[] slateData = WriteSlate(slate);
-
-                        // Call the SyncMethod to have everyone generate the quest.
-                        GenerateQuestSynced(questDef, slateData, randState);
-                    }
-                }
-                catch (Exception e)
-                {
-                    Log.Error($"MP: Exception during debug quest interception: {e}");
-                }
-
-                // CRITICAL: Return false to prevent the original, broken debug action logic from running.
-                // We also need to manually close the debug window.
                 Find.WindowStack.TryRemove(typeof(Dialog_Debug));
                 return false;
             }
         }
 
-        // This method remains the same. All players (including host) execute it.
         [SyncMethod]
         public static void GenerateQuestSynced(QuestScriptDef root, byte[] slateData, ulong randState)
         {
@@ -83,6 +59,11 @@ namespace Multiplayer.Client
             {
                 isExecutingSyncedQuestGeneration = true;
 
+                // =========================================================================
+                // CRITICAL FIX: The entire generation block is wrapped in a Pushed/Popped
+                // random state. This ensures that the quest generation is perfectly
+                // deterministic and isolated from the rest of the game's RNG.
+                // =========================================================================
                 Rand.PushState();
                 Rand.StateCompressed = randState;
 
@@ -93,15 +74,12 @@ namespace Multiplayer.Client
                     return;
                 }
 
-                // We now call the lower-level QuestGen.Generate directly, which is safer.
                 generatedQuest = QuestGen.Generate(root, slate);
 
                 if (generatedQuest != null)
                 {
-                    // Add the generated quest to the manager.
                     Find.QuestManager.Add(generatedQuest);
 
-                    // The host then triggers the letter for everyone.
                     if (Multiplayer.LocalServer != null)
                     {
                         ShowLetterSynced(generatedQuest.id);
@@ -114,6 +92,7 @@ namespace Multiplayer.Client
             }
             finally
             {
+                // CRITICAL: Always pop the state, even if an error occurred.
                 Rand.PopState();
                 isExecutingSyncedQuestGeneration = false;
             }
