@@ -6,6 +6,7 @@ using Verse;
 using Verse.AI;
 using HarmonyLib;
 using System.Runtime.CompilerServices;
+using Multiplayer.Common;
 
 namespace Multiplayer.Client
 {
@@ -42,19 +43,24 @@ namespace Multiplayer.Client
 
         // MODIFIED METHOD: The original SetPawnPath is replaced by one that takes raw data.
         [SyncMethod]
-        public static void SetPawnPathRaw(Pawn pawn, int[] nodeData, int cost, bool usedRegionHeuristics)
+        public static void SetPawnPathBytes(Pawn pawn, byte[] pathBytes, int cost, bool usedRegionHeuristics)
         {
-            var nodes = new List<IntVec3>(nodeData.Length / 3);
-            for (int i = 0; i < nodeData.Length; i += 3)
+            // NEW: Deserialize the path data from the byte array.
+            var nodes = new List<IntVec3>();
+            if (pathBytes != null && pathBytes.Length > 0)
             {
-                nodes.Add(new IntVec3(nodeData[i], nodeData[i + 1], nodeData[i + 2]));
+                var reader = new ByteReader(pathBytes);
+                int count = reader.ReadInt32();
+                for (int i = 0; i < count; i++)
+                {
+                    nodes.Add(new IntVec3(reader.ReadInt32(), reader.ReadInt32(), reader.ReadInt32()));
+                }
             }
 
             Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {nodes.Count} nodes.");
 
             if (pawn == null || pawn.pather == null) return;
 
-            // On clients (and host), we forcibly overwrite their current path with the host's authoritative one.
             if (pawn.pather.curPath != null)
             {
                 pawn.pather.curPath.ReleaseToPool();
@@ -62,11 +68,9 @@ namespace Multiplayer.Client
 
             PawnPath path = pawn.Map.pawnPathPool.GetPath();
             path.InitializeFromNodeList(nodes, cost, usedRegionHeuristics);
-            path.SetSynced(true);  // Mark this path as synced so the host doesn't try to re-sync it.
 
             using (new Multiplayer.DontSync())
             {
-                // This part is critical. We directly replace the pather's current path.
                 pawn.pather.curPath = path;
                 pawn.pather.ResetToCurrentPosition();
             }

@@ -6,6 +6,7 @@ using Verse.AI;
 using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Multiplayer.Common;
 
 namespace Multiplayer.Client
 {
@@ -35,22 +36,26 @@ namespace Multiplayer.Client
                         Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Triggering sync...");
 
                         var nodes = outPath.NodesReversed.ToList();
-                        var nodeData = new int[nodes.Count * 3];
-                        for (int i = 0; i < nodes.Count; i++)
-                        {
-                            nodeData[i * 3] = nodes[i].x;
-                            nodeData[i * 3 + 1] = nodes[i].y;
-                            nodeData[i * 3 + 2] = nodes[i].z;
-                        }
 
-                        // Call the sync method to broadcast the path to everyone.
-                        SyncedActions.SetPawnPathRaw(__instance.pawn, nodeData, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
+                        // NEW: Serialize the node data into a byte array immediately.
+                        var writer = new ByteWriter();
+                        writer.WriteInt32(nodes.Count);
+                        foreach (var node in nodes)
+                        {
+                            writer.WriteInt32(node.x);
+                            writer.WriteInt32(node.y);
+                            writer.WriteInt32(node.z);
+                        }
+                        byte[] pathBytes = writer.ToArray();
+
+                        // Call the sync method with the serialized byte array.
+                        SyncedActions.SetPawnPathBytes(__instance.pawn, pathBytes, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
                     }
                     else
                     {
                         // The pathfinder failed. Tell everyone that the path is empty.
                         Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path NOT found. Syncing empty path.");
-                        SyncedActions.SetPawnPathRaw(__instance.pawn, new int[0], 0, false);
+                        SyncedActions.SetPawnPathBytes(__instance.pawn, new byte[0], 0, false);
                     }
 
                     // Release the host's local copy of the path.
