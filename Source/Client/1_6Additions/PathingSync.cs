@@ -31,13 +31,13 @@ namespace Multiplayer.Client
             );
             Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
 
-            // This patch syncs the path result from the host.
+            /* This patch syncs the path result from the host.
             harmony.Patch(
                 AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
                 prefix: new HarmonyMethod(typeof(Pawn_PathFollower_PatherTick_Patch), nameof(Pawn_PathFollower_PatherTick_Patch.Prefix))
             );
             Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
-
+            */
             // This patch handles a combat edge case.
             harmony.Patch(
                 AccessTools.Method(typeof(Toils_Combat), nameof(Toils_Combat.GotoCastPosition)),
@@ -73,9 +73,6 @@ namespace Multiplayer.Client
             var jobParams = new JobParams(newJob);
             var context = new StartJobContext(lastJobEndCondition, resumeCurJobAfterwards, cancelBusyStances, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
 
-            // Send the authoritative command to all clients (including self).
-            SyncedActions.StartJob(__instance.pawn, jobParams, context);
-
             // Prevent the original method from running; the sync handler will call it.
             return false;
         }
@@ -102,7 +99,7 @@ namespace Multiplayer.Client
                     Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path result found. Triggering sync for path with {surrogate.NodeCount} nodes.");
 
                     // Call the sync method.
-                    SyncedActions.SetPawnPath(__instance.pawn, surrogate);
+                    //SyncedActions.SetPawnPath(__instance.pawn, surrogate);
 
                     // Clean up the host's local path object.
                     outPath.Dispose();
@@ -351,6 +348,7 @@ namespace Multiplayer.Client
             job.verbToUse = reconstructedJob.verbToUse;
         }
 
+        /*
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
@@ -372,7 +370,7 @@ namespace Multiplayer.Client
             {
                 pawn.pather.PatherFailed();
             }
-        }
+        }*/
     }
 
     //############################################################################
