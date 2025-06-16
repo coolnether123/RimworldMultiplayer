@@ -18,6 +18,7 @@ namespace Multiplayer.Client
     public static class QuestSync
     {
         private static bool isExecutingSyncedQuestGeneration;
+        private static int? nextQuestIdOverride; // Used to force a specific Quest ID
 
         [HarmonyPatch(typeof(DebugActionNode), nameof(DebugActionNode.Enter))]
         static class DebugAction_GenerateQuest_Patch
@@ -25,7 +26,6 @@ namespace Multiplayer.Client
             static bool Prefix(DebugActionNode __instance)
             {
                 if (Multiplayer.Client == null) return true;
-
                 var questDef = DefDatabase<QuestScriptDef>.GetNamed(__instance.label, false);
                 if (questDef == null) return true;
 
@@ -34,16 +34,14 @@ namespace Multiplayer.Client
                     var slate = new Slate();
                     slate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
 
-                    // =========================================================================
-                    // CRITICAL FIX: The authoritative random state is now captured here,
-                    // right at the moment of user input, before anything else can run.
-                    // This is the seed that will be broadcast and used by everyone.
-                    // =========================================================================
+                    // The host determines all inputs authoritatively.
                     ulong randState = Rand.StateCompressed;
+                    int questId = Find.UniqueIDsManager.GetNextQuestID(); // Host reserves the ID now.
 
                     byte[] slateData = WriteSlate(slate);
 
-                    GenerateQuestSynced(questDef, slateData, randState);
+                    // Broadcast all necessary inputs, including the reserved Quest ID.
+                    GenerateQuestSynced(questDef, slateData, randState, questId);
                 }
 
                 Find.WindowStack.TryRemove(typeof(Dialog_Debug));
@@ -51,19 +49,32 @@ namespace Multiplayer.Client
             }
         }
 
+        // Patch to force the Quest ID during synced generation.
+        [HarmonyPatch(typeof(UniqueIDsManager), nameof(UniqueIDsManager.GetNextQuestID))]
+        static class GetNextQuestID_Patch
+        {
+            static bool Prefix(ref int __result)
+            {
+                if (isExecutingSyncedQuestGeneration && nextQuestIdOverride.HasValue)
+                {
+                    __result = nextQuestIdOverride.Value;
+                    return false; // Skip original method and use our override ID.
+                }
+                return true;
+            }
+        }
+
         [SyncMethod]
-        public static void GenerateQuestSynced(QuestScriptDef root, byte[] slateData, ulong randState)
+        public static void GenerateQuestSynced(QuestScriptDef root, byte[] slateData, ulong randState, int questId)
         {
             Quest generatedQuest = null;
+            string clientName = Multiplayer.Client == null ? "SP" : (Multiplayer.LocalServer != null ? "Host" : "Client");
+
             try
             {
                 isExecutingSyncedQuestGeneration = true;
+                nextQuestIdOverride = questId; // Set the override ID for the patch.
 
-                // =========================================================================
-                // CRITICAL FIX: The entire generation block is wrapped in a Pushed/Popped
-                // random state. This ensures that the quest generation is perfectly
-                // deterministic and isolated from the rest of the game's RNG.
-                // =========================================================================
                 Rand.PushState();
                 Rand.StateCompressed = randState;
 
@@ -78,6 +89,10 @@ namespace Multiplayer.Client
 
                 if (generatedQuest != null)
                 {
+                    // The ID patch should ensure this matches the host's ID.
+                    Log.Message($"MP ({clientName}): Generated quest '{generatedQuest.name}' with ID {generatedQuest.id}. (Expected ID: {questId})");
+
+                    // The original Add method checks for duplicates, so it's safe to call on the host too.
                     Find.QuestManager.Add(generatedQuest);
 
                     if (Multiplayer.LocalServer != null)
@@ -88,12 +103,12 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                Log.Error($"MP: Exception during synced quest generation: {e}");
+                Log.Error($"MP: Exception during synced quest generation on {clientName}: {e}");
             }
             finally
             {
-                // CRITICAL: Always pop the state, even if an error occurred.
                 Rand.PopState();
+                nextQuestIdOverride = null; // Clean up the override.
                 isExecutingSyncedQuestGeneration = false;
             }
         }
