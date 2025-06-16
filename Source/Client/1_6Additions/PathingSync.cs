@@ -12,7 +12,6 @@ namespace Multiplayer.Client
 {
     //############################################################################
     // SECTION 1: HARMONY PATCHER
-    // This class runs at startup and applies all our patches.
     //############################################################################
 
     [StaticConstructorOnStartup]
@@ -21,29 +20,26 @@ namespace Multiplayer.Client
         static PathingSyncHarmony()
         {
             var harmony = Multiplayer.harmony;
-            Log.Message("[Multiplayer] Applying pathfinding and job synchronization patches for 1.6...");
+            Log.Message("[Multiplayer] Applying pathfinding and job synchronization patches for 1.6 (v2)...");
 
-            // Intercepts ALL job starts to sync them.
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)));
             Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.StartJob");
 
-            // Intercepts player-ordered jobs to sync them.
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_TryTakeOrderedJob)));
             Log.Message("[Multiplayer] ... Patched Pawn_JobTracker.TryTakeOrderedJob");
 
-            // Observes the host's pather to sync new paths.
+            // We now use a Postfix on PatherTick. This is less intrusive and more reliable.
+            // It lets the original game logic run completely, then we check the result.
             harmony.Patch(AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
-                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_PatherTick)));
-            Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick");
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PatherTick)));
+            Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.PatherTick (Postfix)");
 
-            // Prevents clients from generating their own paths.
             harmony.Patch(AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.SetNewPathRequest)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_SetNewPathRequest)));
             Log.Message("[Multiplayer] ... Patched Pawn_PathFollower.SetNewPathRequest");
 
-            // Clears path cache on despawn to prevent memory leaks.
             harmony.Patch(AccessTools.Method(typeof(Pawn), nameof(Pawn.DeSpawn)),
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PawnDeSpawn)));
             Log.Message("[Multiplayer] ... Patched Pawn.DeSpawn");
@@ -56,100 +52,91 @@ namespace Multiplayer.Client
 
     public static class PathingPatches
     {
-        private static Dictionary<int, PawnPathSurrogate> lastSyncedPathCache = new();
+        // We now need two caches: one for the PawnPath instance itself, and one for the surrogate.
+        // This helps us detect changes efficiently without creating surrogates every tick.
+        private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
+        private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
 
-        // Patch 1: Sync all jobs at their source.
-        public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, JobCondition lastJobEndCondition, ThinkNode jobGiver)
+        public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
         {
-            // If not in a multiplayer game, or if this is a non-AI job (player ordered), run original.
-            // Player-ordered jobs are handled by Prefix_TryTakeOrderedJob.
             if (Multiplayer.Client == null || jobGiver == null) return true;
 
-            // On the host, we let the AI decide the job and then sync it.
             if (Multiplayer.LocalServer != null)
             {
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
-                // We let the original method run on the host.
                 return true;
             }
 
-            // On the client, we block the AI from starting any jobs. They will receive the job from the host.
             return false;
         }
 
-        // Patch 2: Sync player-ordered jobs.
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
             if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
 
-            // Sync the action, then block the original method. The host will send back the command to run the job on all clients.
             SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
             return false;
         }
 
-        // Patch 3: Observe the host's pathfinding and sync results.
-        public static bool Prefix_PatherTick(Pawn_PathFollower __instance)
+        // NEW LOGIC: Using a postfix is safer. We let the game do its thing, then we check the result.
+        public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            if (Multiplayer.Client == null || Multiplayer.dontSync || !__instance.pawn.Spawned) return true;
+            // We only care about the host's pathfinding results.
+            if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
-            // Only the host generates and sends paths.
-            if (Multiplayer.LocalServer != null)
+            Pawn pawn = __instance.pawn;
+            PawnPath currentPath = __instance.curPath;
+
+            // Get the last path instance we saw for this pawn.
+            lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
+
+            // If the current path is different from the one we cached, it's a new path.
+            if (currentPath != cachedPathInstance)
             {
-                // We check if a new path has been calculated.
-                if (__instance.curPathRequest != null && __instance.curPathRequest.TryGetPath(out PawnPath outPath))
+                // Update the instance cache immediately.
+                lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
+
+                // Create a surrogate from the new path to compare and sync.
+                var newSurrogate = new PawnPathSurrogate(currentPath);
+
+                // Get the last surrogate we actually *sent* over the network.
+                lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
+
+                // If the new path is meaningfully different from the last one we sent, sync it.
+                if (!newSurrogate.IsSameAs(lastSentSurrogate))
                 {
-                    // A new path is ready. Create a surrogate for syncing.
-                    var surrogate = new PawnPathSurrogate(outPath);
+                    Log.Message($"[HOST] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Detected new path. Syncing {newSurrogate.NodeCount} nodes.");
+                    SyncedActions.SetPawnPath(pawn, newSurrogate);
 
-                    // Check if it's different from the last one we sent.
-                    if (!lastSyncedPathCache.TryGetValue(__instance.pawn.thingIDNumber, out var lastPath) || !surrogate.IsSameAs(lastPath))
-                    {
-                        // It's a new, unique path. Sync it.
-                        SyncedActions.SetPawnPath(__instance.pawn, surrogate);
-                        lastSyncedPathCache[__instance.pawn.thingIDNumber] = surrogate;
-                    }
-
-                    // CRITICAL: We DO NOT dispose the path or return false.
-                    // The original PatherTick method needs `outPath` to continue its logic and make the host's pawn move.
+                    // Update the cache of what we've sent.
+                    lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
                 }
             }
-
-            // Always allow the original PatherTick to run.
-            // - For the host, this is essential for pawn movement.
-            // - For clients, this is needed to process movement along the synced path and handle arrival.
-            return true;
         }
 
-        // Patch 4: Prevent clients from ever requesting a path.
         public static bool Prefix_SetNewPathRequest(Pawn_PathFollower __instance)
         {
-            // If we're in a multiplayer game AND we are a client (not the host), block this method.
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null)
             {
-                // Clients must not generate their own paths. They wait for the host's instruction.
-                // By returning false, we prevent the client from creating a new PathRequest.
                 return false;
             }
 
-            // Allow the host to run this method freely.
             return true;
         }
 
-        // Patch 5: Clear cache on despawn.
         public static void Postfix_PawnDeSpawn(Pawn __instance)
         {
             if (Multiplayer.Client != null)
             {
-                lastSyncedPathCache.Remove(__instance.thingIDNumber);
+                lastPathInstanceCache.Remove(__instance.thingIDNumber);
+                lastSyncedSurrogateCache.Remove(__instance.thingIDNumber);
             }
         }
     }
 
     //############################################################################
     // SECTION 3: DATA TRANSFER OBJECTS (DTOs)
-    // Your DTOs were well-structured and are kept largely the same.
-    // I removed StartJobContext as we can now sync StartJob and TryTakeOrderedJob
-    // directly, which is cleaner.
+    // Same as before, these are solid.
     //############################################################################
 
     public class JobParams : ISynchronizable
@@ -268,9 +255,6 @@ namespace Multiplayer.Client
             if (this.nodes[0] != other.nodes[0]) return false;
             if (this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1]) return false;
 
-            // For performance, we only do a shallow check. If you still see pathing desyncs,
-            // a full list comparison could be enabled for debugging.
-            // return this.nodes.SequenceEqual(other.nodes);
             return true;
         }
 
@@ -288,10 +272,11 @@ namespace Multiplayer.Client
             if (!isValid) return PawnPath.NotFound;
             PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
 
-            // We need to use reflection to set the private fields correctly, as there's no public initializer.
             var traverser = Traverse.Create(newPath);
-            traverser.Field<List<IntVec3>>("nodes").Value.Clear();
-            traverser.Field<List<IntVec3>>("nodes").Value.AddRange(nodes);
+            var pathNodes = traverser.Field<List<IntVec3>>("nodes").Value;
+            pathNodes.Clear();
+            pathNodes.AddRange(nodes);
+
             traverser.Field<float>("totalCostInt").Value = totalCost;
             traverser.Field<int>("curNodeIndex").Value = nodes.Count - 1;
             traverser.Field<bool>("usedRegionHeuristics").Value = usedRegionHeuristics;
@@ -320,15 +305,9 @@ namespace Multiplayer.Client
         public static void StartJobAI(Pawn pawn, JobParams jobParams)
         {
             if (pawn == null || pawn.jobs == null || pawn.Dead) return;
-
             Job job = jobParams.ToJob();
-
-            // This code now runs on all clients, initiated by the host.
-            // We use DontSync to prevent this from creating a feedback loop.
             using (new Multiplayer.DontSync())
             {
-                // Let the JobTracker start the job. We use InterruptForced because an AI job
-                // should override whatever the pawn was doing.
                 pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, false, true, job.jobGiverThinkTree);
             }
         }
@@ -337,13 +316,9 @@ namespace Multiplayer.Client
         public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
             if (pawn == null || pawn.jobs == null) return;
-
             Job job = jobParams.ToJob();
-
             using (new Multiplayer.DontSync())
             {
-                // We directly call the original logic on all clients now.
-                // The prefix on TryTakeOrderedJob will be skipped because of ShouldSync.
                 pawn.jobs.TryTakeOrderedJob(job, tag);
             }
         }
@@ -351,28 +326,43 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            if (Multiplayer.LocalServer != null) return; // Host doesn't need to receive its own paths
-            if (pawn == null || pawn.pather == null || surrogate == null) return;
+            // Host doesn't need to receive paths, only send them.
+            if (Multiplayer.LocalServer != null) return;
 
-            PawnPath path = surrogate.ToPawnPath(pawn);
-
-            // Release the old path to the pool to prevent memory leaks
-            pawn.pather.curPath?.ReleaseToPool();
-
-            pawn.pather.curPath = path;
-
-            // If a valid path was received, reset the pather's state.
-            // If the path is invalid (not found), make the pather fail gracefully.
-            if (path.Found)
+            if (pawn == null || pawn.pather == null || surrogate == null)
             {
-                // ResetToCurrentPosition makes the pather re-evaluate its state with the new path
-                // and start moving from its current cell. It also handles setting up the first move.
-                pawn.pather.ResetToCurrentPosition();
+                Log.Warning($"[CLIENT] Received invalid SetPawnPath call. Pawn: {pawn?.ToString() ?? "null"}, Surrogate: {surrogate?.ToString() ?? "null"}");
+                return;
+            }
+
+            // ADDED LOGGING
+            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
+            Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Receiving path with {surrogate.NodeCount} nodes. Valid: {surrogate.IsValid()}");
+
+            var pather = pawn.pather;
+            PawnPath newPath = surrogate.ToPawnPath(pawn);
+
+            pather.curPath?.ReleaseToPool();
+            pather.curPath = newPath;
+
+            // This is the logic that actually makes the client pawn react to the new path.
+            if (newPath.Found)
+            {
+                pather.ResetToCurrentPosition();
             }
             else
             {
-                pawn.pather.PatherFailed();
+                pather.PatherFailed();
             }
+        }
+    }
+
+    // Helper extension method for logging
+    public static class PawnPathSurrogateExtensions
+    {
+        public static bool IsValid(this PawnPathSurrogate surrogate)
+        {
+            return (bool)Traverse.Create(surrogate).Field("isValid").GetValue();
         }
     }
 }
