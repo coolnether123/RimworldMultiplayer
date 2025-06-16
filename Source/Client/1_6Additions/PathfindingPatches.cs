@@ -60,28 +60,4 @@ namespace Multiplayer.Client
             __instance.SetSynced(false);
         }
     }
-
-    // And an extension method to access our new field safely.
-    public static class PawnPathSync_Extensions
-    {
-        // Use a ConditionalWeakTable to avoid memory leaks with pooled objects.
-        // This is a much safer way to attach data to existing objects.
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PawnPath, StrongBox<bool>> syncedPaths =
-            new System.Runtime.CompilerServices.ConditionalWeakTable<PawnPath, StrongBox<bool>>();
-
-        public static bool IsSynced(this PawnPath path)
-        {
-            if (syncedPaths.TryGetValue(path, out var box))
-            {
-                return box.Value;
-            }
-            return false;
-        }
-
-        public static void SetSynced(this PawnPath path, bool value)
-        {
-            var box = syncedPaths.GetOrCreateValue(path);
-            box.Value = value;
-        }
-    }
 }

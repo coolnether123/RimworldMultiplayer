@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Verse;
 using Verse.AI;
 using HarmonyLib;
+using System.Runtime.CompilerServices;
 
 namespace Multiplayer.Client
 {
@@ -72,7 +73,24 @@ namespace Multiplayer.Client
         }
     }
 
-        public static class PawnPath_Extensions
+    public static class PawnPathSync_Extensions
+    {
+        private static readonly ConditionalWeakTable<PawnPath, StrongBox<bool>> syncedPaths =
+            new ConditionalWeakTable<PawnPath, StrongBox<bool>>();
+
+        public static bool IsSynced(this PawnPath path)
+        {
+            return syncedPaths.TryGetValue(path, out var box) && box.Value;
+        }
+
+        public static void SetSynced(this PawnPath path, bool value)
+        {
+            var box = syncedPaths.GetOrCreateValue(path);
+            box.Value = value;
+        }
+    }
+
+    public static class PawnPath_Extensions
     {
         public static void InitializeFromNodeList(this PawnPath path, List<IntVec3> nodes, int cost, bool usedRegionHeuristics)
         {
