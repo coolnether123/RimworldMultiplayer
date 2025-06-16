@@ -8,25 +8,15 @@ using Verse;
 
 namespace Multiplayer.Client.AsyncTime;
 
-[HarmonyPatch]
-public class StorytellerTickPatch
+// The old StorytellerTickPatch class has been removed from this file.
+// Its job is now done by Storyteller_Tick_Sync in Patches.cs.
+
+public static class StorytellerTickPatch
 {
     public static bool updating;
-
-    static IEnumerable<MethodBase> TargetMethods()
-    {
-        yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
-        yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
-    }
-
-    static bool Prefix()
-    {
-        updating = true;
-        return Multiplayer.Client == null || Multiplayer.Ticking;
-    }
-
-    static void Finalizer() => updating = false;
 }
+
+
 
 [HarmonyPatch(typeof(Storyteller))]
 [HarmonyPatch(nameof(Storyteller.AllIncidentTargets), MethodType.Getter)]
