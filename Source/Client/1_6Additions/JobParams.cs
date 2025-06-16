@@ -26,8 +26,9 @@ namespace Multiplayer.Client
         public Faction lordFaction;
         public int takeExtraIngestibles;
 
-        public ThinkNode jobGiver;
-        public ThinkTreeDef thinkTree;
+        // CHANGED: Instead of syncing the ThinkNode object, we sync its definition and key.
+        private ThinkTreeDef thinkTreeDef;
+        private int jobGiverKey;
 
         private Thing verbCaster;
         private int verbIndex = -1;
@@ -50,13 +51,13 @@ namespace Multiplayer.Client
             lordFaction = job.lord?.faction;
             takeExtraIngestibles = job.takeExtraIngestibles;
 
-            jobGiver = job.jobGiver;
-            thinkTree = job.jobGiverThinkTree;
+            // NEW: Safely capture the ThinkNode reference
+            thinkTreeDef = job.jobGiverThinkTree;
+            jobGiverKey = job.jobGiver?.UniqueSaveKey ?? -1;
 
             if (job.verbToUse != null)
             {
                 verbCaster = job.verbToUse.Caster;
-                // CORRECTED: Cast to IVerbOwner to access VerbTracker
                 var owner = verbCaster as IVerbOwner;
                 verbIndex = owner?.VerbTracker?.AllVerbs.IndexOf(job.verbToUse) ?? -1;
             }
@@ -76,12 +77,19 @@ namespace Multiplayer.Client
             job.canBashFences = canBashFences;
             job.haulMode = haulMode;
             job.takeExtraIngestibles = takeExtraIngestibles;
-            job.jobGiver = jobGiver;
-            job.jobGiverThinkTree = thinkTree;
+
+            // NEW: Reconstruct the ThinkNode reference
+            if (thinkTreeDef != null && jobGiverKey != -1)
+            {
+                if (thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out ThinkNode node))
+                {
+                    job.jobGiver = node;
+                    job.jobGiverThinkTree = thinkTreeDef;
+                }
+            }
 
             if (verbCaster != null && verbIndex != -1)
             {
-                // CORRECTED: Cast to IVerbOwner to access VerbTracker
                 var owner = verbCaster as IVerbOwner;
                 var tracker = owner?.VerbTracker;
                 if (tracker != null && verbIndex >= 0 && verbIndex < tracker.AllVerbs.Count)
@@ -108,8 +116,10 @@ namespace Multiplayer.Client
             worker.Bind(ref haulMode);
             worker.Bind(ref lordFaction);
             worker.Bind(ref takeExtraIngestibles);
-            worker.Bind(ref jobGiver);
-            worker.Bind(ref thinkTree);
+
+            // CHANGED: Syncing the Def and key is safe.
+            worker.Bind(ref thinkTreeDef);
+            worker.Bind(ref jobGiverKey);
 
             worker.Bind(ref verbCaster);
             worker.Bind(ref verbIndex);
