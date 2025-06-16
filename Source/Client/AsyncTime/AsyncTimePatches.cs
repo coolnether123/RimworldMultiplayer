@@ -72,6 +72,8 @@ namespace Multiplayer.Client.AsyncTime
         }
     }
 
+
+
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.RegisterAllTickabilityFor))]
     public static class TickListAdd
     {
@@ -94,6 +96,34 @@ namespace Multiplayer.Client.AsyncTime
                 comp.tickListLong.RegisterThing(t);
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// This patch prevents TickList from being modified while a map is still generating,
+    /// which could cause issues. It checks for a valid AsyncTime component before proceeding.
+    /// </summary>
+    [HarmonyPatch(typeof(TickManager), nameof(TickManager.RegisterAllTickabilityFor))]
+    static class TickListAddFailSafe
+    {
+        static bool Prefix(Thing t)
+        {
+            if (Multiplayer.Client == null || t.Map == null) return true;
+            return t.Map.AsyncTime() != null;
+        }
+    }
+
+    /// <summary>
+    /// This patch prevents TickList from being modified while a map is still generating,
+    /// which could cause issues. It checks for a valid AsyncTime component before proceeding.
+    /// </summary>
+    [HarmonyPatch(typeof(TickManager), nameof(TickManager.DeRegisterAllTickabilityFor))]
+    static class TickListRemoveFailSafe
+    {
+        static bool Prefix(Thing t)
+        {
+            if (Multiplayer.Client == null || t.Map == null) return true;
+            return t.Map.AsyncTime() != null;
         }
     }
 
