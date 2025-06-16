@@ -11,7 +11,7 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
     public static class Pawn_JobTracker_StartJob_Patch
     {
-        static bool Prefix(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver, ThinkTreeDef thinkTree)
+        public static bool Prefix(Pawn_JobTracker __instance, Job newJob, JobCondition lastJobEndCondition, ThinkNode jobGiver, bool resumeCurJobAfterwards, bool cancelBusyStances, ThinkTreeDef thinkTree, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
         {
             // If not in multiplayer, or if a sync command is currently being executed, run the original logic.
             if (!Multiplayer.ShouldSync) return true;
@@ -36,11 +36,7 @@ namespace Multiplayer.Client
             var jobParams = new JobParams(newJob);
 
             // The SyncedJobs class will handle broadcasting and execution on all clients.
-            SyncedJobs.StartJob(
-                pawn,
-                jobParams,
-                __instance.curJob?.def == newJob.def ? JobCondition.Succeeded : JobCondition.InterruptForced
-            );
+            SyncedActions.StartJob(pawn, jobParams, lastJobEndCondition, resumeCurJobAfterwards, cancelBusyStances, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
 
             // Always prevent the original StartJob from running directly.
             return false;

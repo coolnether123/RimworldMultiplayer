@@ -9,7 +9,7 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
     public static class Pawn_PathFollower_PatherTick_Patch
     {
-        static bool Prefix(Pawn_PathFollower __instance)
+        public static bool Prefix(Pawn_PathFollower __instance)
         {
             if (!Multiplayer.ShouldSync) return true;
 
@@ -42,12 +42,7 @@ namespace Multiplayer.Client
                     Log.Message($"[HOST] {__instance.pawn?.LabelShortCap}: Path FOUND with {outPath.NodesLeftCount} nodes. Syncing now...");
 
                     var pathNodes = outPath.NodesReversed.GetRange(0, outPath.NodesReversed.Count);
-                    SyncedPaths.SetPawnPath(
-                        __instance.pawn,
-                        pathNodes,
-                        (int)outPath.TotalCost,
-                        outPath.UsedRegionHeuristics
-                    );
+                    SyncedActions.SetPawnPath(__instance.pawn, pathNodes, (int)outPath.TotalCost, outPath.UsedRegionHeuristics);
                 }
                 else
                 {

@@ -1,24 +1,47 @@
-// Multiplayer/Client/Paths/SyncedPaths.cs
+// In new file: SyncedActions.cs
 
 using Multiplayer.API;
 using System.Collections.Generic;
 using Verse;
 using Verse.AI;
-using HarmonyLib; // Required for Traverse
+using HarmonyLib;
 
 namespace Multiplayer.Client
 {
-    public static class SyncedPaths
+    // A central place for all our job and path related SyncMethods
+    public static class SyncedActions
     {
+        [SyncMethod]
+        public static void StartJob(Pawn pawn, JobParams jobParams, JobCondition lastJobEndCondition, bool resumeCurJobAfterwards, bool cancelBusyStances, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
+        {
+            if (pawn == null || pawn.jobs == null || pawn.Dead) return;
+
+            Job job = jobParams.ToJob();
+
+            using (new Multiplayer.DontSync())
+            {
+                // Note: The original StartJob has many parameters. For now we simplify, but may need to expand.
+                pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, resumeCurJobAfterwards, cancelBusyStances, job.jobGiverThinkTree, tag, fromQueue, canReturnCurJobToPool, keepCarryingThingOverride, continueSleeping, preToilReservationsCanFail);
+            }
+        }
+
+        [SyncMethod]
+        public static void SetJobVerb(Pawn pawn, JobParams jobParams)
+        {
+            Job job = pawn?.CurJob;
+            if (job == null) return;
+
+            var reconstructedJob = jobParams.ToJob();
+            job.verbToUse = reconstructedJob.verbToUse;
+        }
+
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, List<IntVec3> nodes, int cost, bool usedRegionHeuristics)
         {
-            // DEBUG: This log will appear on EVERY client's machine when they receive a path.
             Log.Message($"[SYNC] {pawn?.LabelShortCap ?? "NULL PAWN"} is RECEIVING path with {nodes?.Count ?? 0} nodes from host.");
 
             if (pawn == null || pawn.pather == null || nodes == null) return;
 
-            // If there's an existing path, clear it first.
             if (pawn.pather.curPath != null)
             {
                 pawn.pather.curPath.ReleaseToPool();
@@ -29,11 +52,9 @@ namespace Multiplayer.Client
 
             using (new Multiplayer.DontSync())
             {
-                // This logic is tricky. Directly setting curPath and calling SetupMoveIntoNextCell is the goal.
-                // We must also ensure any old path request is cleared.
                 pawn.pather.DisposeAndClearCurPathRequest();
                 pawn.pather.curPath = path;
-                pawn.pather.ResetToCurrentPosition(); // This resets state and calls SetupMoveIntoNextCell internally.
+                pawn.pather.ResetToCurrentPosition();
             }
         }
     }
