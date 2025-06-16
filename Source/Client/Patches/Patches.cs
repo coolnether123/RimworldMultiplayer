@@ -53,6 +53,201 @@ namespace Multiplayer.Client
         }
     }
 
+
+    //======================================================================================
+    // BEGIN DETERMINISTIC TICKER FIXES
+    //======================================================================================
+
+    #region MAP-LEVEL TICKERS
+
+    [HarmonyPatch(typeof(WildPlantSpawner), nameof(WildPlantSpawner.WildPlantSpawnerTick))]
+    public static class WildPlantSpawner_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(WildAnimalSpawner), nameof(WildAnimalSpawner.WildAnimalSpawnerTick))]
+    public static class WildAnimalSpawner_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(SteadyEnvironmentEffects), nameof(SteadyEnvironmentEffects.SteadyEnvironmentEffectsTick))]
+    public static class SteadyEnvironmentEffects_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(WeatherDecider), nameof(WeatherDecider.WeatherDeciderTick))]
+    public static class WeatherDecider_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(PassingShipManager), nameof(PassingShipManager.PassingShipManagerTick))]
+    public static class PassingShipManager_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(UndercaveMapComponent), nameof(UndercaveMapComponent.MapComponentTick))]
+    public static class UndercaveMapComponent_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(LordManager), nameof(LordManager.LordManagerTick))]
+    public static class LordManager_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(FireWatcher), nameof(FireWatcher.FireWatcherTick))]
+    public static class FireWatcher_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(ListerHaulables), nameof(ListerHaulables.ListerHaulablesTick))]
+    public static class ListerHaulables_Tick_Sync
+    {
+        static void Prefix(Map ___map) { if (Multiplayer.Client != null && ___map?.AsyncTime() != null) Rand.PushState(___map.AsyncTime().mapTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    #endregion
+
+    #region WORLD-LEVEL TICKERS
+
+    [HarmonyPatch(typeof(Storyteller), nameof(Storyteller.StorytellerTick))]
+    public static class Storyteller_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick))]
+    public static class StoryWatcher_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(QuestManager), nameof(QuestManager.QuestManagerTick))]
+    public static class QuestManager_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(WorldObjectsHolder), nameof(WorldObjectsHolder.WorldObjectsHolderTick))]
+    public static class WorldObjectsHolder_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(FactionManager), nameof(FactionManager.FactionManagerTick))]
+    public static class FactionManager_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(WorldPawns), nameof(WorldPawns.WorldPawnsTick))]
+    public static class WorldPawns_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.WorldComponentTick))]
+    public static class TileTemperaturesComp_Tick_Sync
+    {
+        static void Prefix() { if (Multiplayer.Client != null) Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    #endregion
+
+    #region CARAVAN-LEVEL TICKERS
+
+    [HarmonyPatch(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.ForageTrackerTickInterval))]
+    public static class Caravan_ForageTracker_Tick_Sync
+    {
+        static void Prefix(Caravan ___caravan) { if (Multiplayer.Client != null && ___caravan != null) Rand.PushState(___caravan.ID); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(Caravan_NeedsTracker), nameof(Caravan_NeedsTracker.NeedsTrackerTickInterval))]
+    public static class Caravan_NeedsTracker_Tick_Sync
+    {
+        static void Prefix(Caravan ___caravan) { if (Multiplayer.Client != null && ___caravan != null) Rand.PushState(___caravan.ID); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(CaravanDrugPolicyUtility), nameof(CaravanDrugPolicyUtility.CheckTakeScheduledDrugs))]
+    public static class Caravan_DrugPolicyUtility_Tick_Sync
+    {
+        static void Prefix(Caravan caravan) { if (Multiplayer.Client != null && caravan != null) Rand.PushState(caravan.ID); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(CaravanTendUtility), nameof(CaravanTendUtility.CheckTend))]
+    public static class Caravan_TendUtility_Tick_Sync
+    {
+        static void Prefix(Caravan caravan) { if (Multiplayer.Client != null && caravan != null) Rand.PushState(caravan.ID); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    [HarmonyPatch(typeof(Caravan_BabyTracker), nameof(Caravan_BabyTracker.TickInterval))]
+    public static class Caravan_BabyTracker_Tick_Sync
+    {
+        static void Prefix(Caravan ___caravan) { if (Multiplayer.Client != null && ___caravan != null) Rand.PushState(___caravan.ID); }
+        static void Finalizer() { if (Multiplayer.Client != null) Rand.PopState(); }
+    }
+
+    #endregion
+
+    #region GAME CONDITION MANAGER
+
+    [HarmonyPatch(typeof(GameConditionManager), nameof(GameConditionManager.GameConditionManagerTick))]
+    public static class GameConditionManager_Tick_Sync
+    {
+        static void Prefix(GameConditionManager __instance)
+        {
+            if (Multiplayer.Client == null) return;
+            if (__instance.ownerMap != null)
+            {
+                if (__instance.ownerMap.AsyncTime() != null) Rand.PushState(__instance.ownerMap.AsyncTime().mapTicks);
+            }
+            else
+            {
+                Rand.PushState(Multiplayer.AsyncWorldTime.worldTicks);
+            }
+        }
+        static void Finalizer()
+        {
+            if (Multiplayer.Client != null) Rand.PopState();
+        }
+    }
+
+    #endregion
+
+    //======================================================================================
+    // END DETERMINISTIC TICKER FIXES
+    //======================================================================================
+
+
+
     [HarmonyPatch(typeof(Dialog_BillConfig), MethodType.Constructor)]
     [HarmonyPatch(new[] { typeof(Bill_Production), typeof(IntVec3) })]
     public static class DialogPatch
@@ -705,7 +900,7 @@ namespace Multiplayer.Client
     //======================================================================================
     // END DESYNC FIX
     //======================================================================================
-    */
+    
     //======================================================================================
     // BEGIN CARAVAN NEEDS DESYNC FIX
     //======================================================================================
@@ -732,7 +927,7 @@ namespace Multiplayer.Client
                 Rand.PopState();
         }
     }
-
+    /*
     //======================================================================================
     // END CARAVAN NEEDS DESYNC FIX
     //======================================================================================

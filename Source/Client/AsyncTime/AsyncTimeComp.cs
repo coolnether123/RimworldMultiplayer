@@ -161,7 +161,6 @@ namespace Multiplayer.Client
             }
 
             // Set our global tick override to this map's specific tick count.
-            // The patches in TileTemperatures.cs will ensure this is used safely.
             TickManager_Patch_State.TicksGame_Agnostic = this.mapTicks;
 
             // Set the map's local storyteller as the current one
@@ -170,23 +169,20 @@ namespace Multiplayer.Client
             Current.Game.storyteller = storyteller;
             Current.Game.storyWatcher = storyWatcher;
 
-            // Push the RNG state
-            Rand.PushState();
-            Rand.StateCompressed = randState;
-
-            // Reset sky glow
-            map.skyManager.curSkyGlowInt = map.skyManager.CurrentSkyTarget().glow;
+            // We no longer manipulate the RNG stack here.
+            // The individual patches in Patches.cs will handle it.
         }
 
         public void PostContext()
         {
+            // Restore the real storyteller
             Current.Game.storyteller = prevStoryteller;
             Current.Game.storyWatcher = prevStoryWatcher;
 
+            // IMPORTANT: Clear the global tick override
             TickManager_Patch_State.TicksGame_Agnostic = null;
 
-            randState = Rand.StateCompressed;
-            Rand.PopState();
+            // We no longer manipulate the RNG stack here.
 
             if (Multiplayer.GameComp.multifaction)
                 map.PopFaction();
