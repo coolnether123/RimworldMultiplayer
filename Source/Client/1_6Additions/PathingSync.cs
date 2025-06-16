@@ -5,6 +5,7 @@ using Multiplayer.API;
 using RimWorld;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Collections;
 using Verse;
 using Verse.AI;
 
@@ -235,10 +236,10 @@ namespace Multiplayer.Client
 
     public class PawnPathSurrogate : ISynchronizable
     {
-        private bool isValid;
+        public bool isValid;
         private List<IntVec3> nodes;
         private int totalCost;
-        private bool usedRegionHeuristics;
+
 
         public int NodeCount => nodes?.Count ?? 0;
 
@@ -263,7 +264,6 @@ namespace Multiplayer.Client
             if (path == null || !path.Found) { isValid = false; return; }
             isValid = true;
             totalCost = (int)path.TotalCost;
-            usedRegionHeuristics = path.UsedRegionHeuristics;
             nodes = new List<IntVec3>(path.NodesReversed);
         }
 
@@ -272,15 +272,18 @@ namespace Multiplayer.Client
             if (!isValid) return PawnPath.NotFound;
             PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
 
-            var traverser = Traverse.Create(newPath);
-            var pathNodes = traverser.Field<List<IntVec3>>("nodes").Value;
-            pathNodes.Clear();
-            pathNodes.AddRange(nodes);
+            // The vanilla PathFinder creates a NativeList to pass to PawnPath.Initialize. We will do the same.
+            var nativeNodes = new NativeList<IntVec3>(nodes.Count, Allocator.Temp);
+            foreach (var node in nodes)
+            {
+                nativeNodes.Add(node);
+            }
 
-            traverser.Field<float>("totalCostInt").Value = totalCost;
-            traverser.Field<int>("curNodeIndex").Value = nodes.Count - 1;
-            traverser.Field<bool>("usedRegionHeuristics").Value = usedRegionHeuristics;
-            traverser.Field<bool>("inUse").Value = true;
+            // This is the vanilla method for setting up a path.
+            newPath.Initialize(nativeNodes, totalCost);
+
+            // Free the temporary native list memory.
+            nativeNodes.Dispose();
 
             return newPath;
         }
@@ -291,7 +294,6 @@ namespace Multiplayer.Client
             if (!isValid) return;
             worker.Bind(ref nodes);
             worker.Bind(ref totalCost);
-            worker.Bind(ref usedRegionHeuristics);
         }
     }
 
@@ -326,18 +328,23 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            // Host doesn't need to receive paths, only send them.
-            if (Multiplayer.LocalServer != null) return;
+            // This method now runs on the client.
+            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
 
-            if (pawn == null || pawn.pather == null || surrogate == null)
+            // Safety check: only clients should process this. The host should never receive paths.
+            if (Multiplayer.LocalServer != null)
             {
-                Log.Warning($"[CLIENT] Received invalid SetPawnPath call. Pawn: {pawn?.ToString() ?? "null"}, Surrogate: {surrogate?.ToString() ?? "null"}");
+                Log.Warning($"[HOST] Erroneously received a SetPawnPath call for {pawn?.LabelShortCap}. Ignoring.");
                 return;
             }
 
-            // ADDED LOGGING
-            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
-            Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Receiving path with {surrogate.NodeCount} nodes. Valid: {surrogate.IsValid()}");
+            if (pawn == null || pawn.pather == null || surrogate == null)
+            {
+                Log.Warning($"[{side}] Received invalid SetPawnPath call. Pawn: {pawn?.ToString() ?? "null"}, Surrogate: {surrogate?.ToString() ?? "null"}");
+                return;
+            }
+
+            Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Processing synced path with {surrogate.NodeCount} nodes. IsValid: {surrogate.isValid}");
 
             var pather = pawn.pather;
             PawnPath newPath = surrogate.ToPawnPath(pawn);
@@ -345,24 +352,25 @@ namespace Multiplayer.Client
             pather.curPath?.ReleaseToPool();
             pather.curPath = newPath;
 
-            // This is the logic that actually makes the client pawn react to the new path.
             if (newPath.Found)
             {
+                Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} | Path is valid. Resetting pather to current position.");
                 pather.ResetToCurrentPosition();
             }
             else
             {
+                Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} | Path not found. Pather failing.");
                 pather.PatherFailed();
             }
         }
     }
 
-    // Helper extension method for logging
+    /* Helper extension method for logging
     public static class PawnPathSurrogateExtensions
     {
         public static bool IsValid(this PawnPathSurrogate surrogate)
         {
             return (bool)Traverse.Create(surrogate).Field("isValid").GetValue();
         }
-    }
+    }*/
 }
