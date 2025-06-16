@@ -18,7 +18,7 @@ namespace Multiplayer.Client
     public static class QuestSync
     {
         private static bool isExecutingSyncedQuestGeneration;
-        private static int? nextQuestIdOverride; // Used to force a specific Quest ID
+        private static int? nextQuestIdOverride;
 
         [HarmonyPatch(typeof(DebugActionNode), nameof(DebugActionNode.Enter))]
         static class DebugAction_GenerateQuest_Patch
@@ -31,16 +31,20 @@ namespace Multiplayer.Client
 
                 if (Multiplayer.LocalServer != null)
                 {
-                    var slate = new Slate();
-                    slate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
+                    // =========================================================================
+                    // CRITICAL FIX: Create a NEW, CLEAN slate. Do not use any pre-existing
+                    // slate from the debug action context. This prevents unsynced variables
+                    // from leaking into the generation process.
+                    // The 'points' variable is the only one required for most quest scripts.
+                    // =========================================================================
+                    var cleanSlate = new Slate();
+                    cleanSlate.Set("points", StorytellerUtility.DefaultThreatPointsNow(Find.CurrentMap));
 
-                    // The host determines all inputs authoritatively.
                     ulong randState = Rand.StateCompressed;
-                    int questId = Find.UniqueIDsManager.GetNextQuestID(); // Host reserves the ID now.
+                    int questId = Find.UniqueIDsManager.GetNextQuestID();
 
-                    byte[] slateData = WriteSlate(slate);
+                    byte[] slateData = WriteSlate(cleanSlate);
 
-                    // Broadcast all necessary inputs, including the reserved Quest ID.
                     GenerateQuestSynced(questDef, slateData, randState, questId);
                 }
 
@@ -49,7 +53,6 @@ namespace Multiplayer.Client
             }
         }
 
-        // Patch to force the Quest ID during synced generation.
         [HarmonyPatch(typeof(UniqueIDsManager), nameof(UniqueIDsManager.GetNextQuestID))]
         static class GetNextQuestID_Patch
         {
@@ -58,7 +61,7 @@ namespace Multiplayer.Client
                 if (isExecutingSyncedQuestGeneration && nextQuestIdOverride.HasValue)
                 {
                     __result = nextQuestIdOverride.Value;
-                    return false; // Skip original method and use our override ID.
+                    return false;
                 }
                 return true;
             }
@@ -73,7 +76,7 @@ namespace Multiplayer.Client
             try
             {
                 isExecutingSyncedQuestGeneration = true;
-                nextQuestIdOverride = questId; // Set the override ID for the patch.
+                nextQuestIdOverride = questId;
 
                 Rand.PushState();
                 Rand.StateCompressed = randState;
@@ -89,10 +92,10 @@ namespace Multiplayer.Client
 
                 if (generatedQuest != null)
                 {
-                    // The ID patch should ensure this matches the host's ID.
-                    Log.Message($"MP ({clientName}): Generated quest '{generatedQuest.name}' with ID {generatedQuest.id}. (Expected ID: {questId})");
+                    // Add a debug log to dump the generated quest XML for comparison
+                    string questXml = Scribe.saver.DebugOutputFor(generatedQuest);
+                    Log.Message($"MP ({clientName}): Generated quest '{generatedQuest.name}' with ID {generatedQuest.id}.\nXML Dump:\n{questXml}");
 
-                    // The original Add method checks for duplicates, so it's safe to call on the host too.
                     Find.QuestManager.Add(generatedQuest);
 
                     if (Multiplayer.LocalServer != null)
@@ -108,7 +111,7 @@ namespace Multiplayer.Client
             finally
             {
                 Rand.PopState();
-                nextQuestIdOverride = null; // Clean up the override.
+                nextQuestIdOverride = null;
                 isExecutingSyncedQuestGeneration = false;
             }
         }
