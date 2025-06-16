@@ -12,7 +12,7 @@ namespace Multiplayer.Client
     {
         public static bool Prefix(Pawn_JobTracker __instance, Job newJob, JobCondition lastJobEndCondition, ThinkNode jobGiver, bool resumeCurJobAfterwards, bool cancelBusyStances, ThinkTreeDef thinkTree, JobTag? tag, bool fromQueue, bool canReturnCurJobToPool, bool? keepCarryingThingOverride, bool continueSleeping, bool preToilReservationsCanFail)
         {
-            if (!Multiplayer.ShouldSync) return true;
+            if (Multiplayer.Client == null || Multiplayer.dontSync) return true;
 
             Pawn pawn = __instance.pawn;
             bool isAIJob = jobGiver != null;

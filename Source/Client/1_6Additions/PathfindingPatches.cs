@@ -11,7 +11,7 @@ namespace Multiplayer.Client
     {
         public static bool Prefix(Pawn_PathFollower __instance)
         {
-            if (!Multiplayer.ShouldSync) return true;
+            if (Multiplayer.Client == null || Multiplayer.dontSync || !__instance.pawn.Spawned) return true;
 
             // DEBUG: Log entry for every pawn this is called for.
             // Note: This can be spammy, but is essential for debugging.
