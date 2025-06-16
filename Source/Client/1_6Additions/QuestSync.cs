@@ -52,12 +52,13 @@ namespace Multiplayer.Client
         [HarmonyPatch(typeof(QuestGen), nameof(QuestGen.Generate))]
         static class QuestGen_Generate_Patch
         {
-            static void Prefix(Slate slate)
+            // FIX: The parameter name now matches the original method's parameter name "initialVars".
+            static void Prefix(Slate initialVars)
             {
                 // Capture the RNG state and store it in the slate so the Postfix can access it.
                 if (Multiplayer.LocalServer != null)
                 {
-                    slate.Set("randState", Rand.StateCompressed, true);
+                    initialVars.Set("randState", Rand.StateCompressed, true);
                 }
             }
         }
