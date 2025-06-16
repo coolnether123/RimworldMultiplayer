@@ -22,13 +22,23 @@ namespace Multiplayer.Client
                 {
                     __instance.DisposeAndClearCurPathRequest();
 
-                    // Create the surrogate object from the path.
-                    var surrogate = new PawnPathSurrogate(outPath);
+                    if (outPath.Found)
+                    {
+                        // Get the raw, reliable data we attached earlier.
+                        var (nodes, cost) = outPath.GetRawPathData();
 
-                    Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {(outPath.Found ? outPath.NodesLeftCount : 0)} nodes. Triggering sync...");
+                        // Create the surrogate directly from the reliable raw data.
+                        var surrogate = new PawnPathSurrogate(nodes, cost, outPath.UsedRegionHeuristics);
 
-                    // Call the sync method, passing the surrogate object.
-                    SyncedActions.SetPawnPath(__instance.pawn, surrogate);
+                        Log.Message($"[HOST] {__instance.pawn.LabelShortCap}: Path FOUND with {nodes.Count} nodes. Triggering sync...");
+
+                        SyncedActions.SetPawnPath(__instance.pawn, surrogate);
+                    }
+                    else
+                    {
+                        // Path not found, sync an invalid surrogate.
+                        SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(null));
+                    }
 
                     outPath.Dispose();
                     return false;

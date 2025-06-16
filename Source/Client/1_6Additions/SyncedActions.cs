@@ -45,6 +45,19 @@ namespace Multiplayer.Client
             worker.Bind(ref totalCost);
             worker.Bind(ref usedRegionHeuristics);
         }
+        public PawnPathSurrogate(List<IntVec3> nodes, int cost, bool usedHeuristics)
+        {
+            if (nodes == null)
+            {
+                isValid = false;
+                return;
+            }
+
+            isValid = true;
+            this.nodes = nodes;
+            this.totalCost = cost;
+            this.usedRegionHeuristics = usedHeuristics;
+        }
     }
 
     public static class SyncedActions
@@ -117,6 +130,25 @@ namespace Multiplayer.Client
             pathTraverser.Field<int>("curNodeIndex").Value = path.NodesReversed.Count - 1;
             pathTraverser.Field<bool>("usedRegionHeuristics").Value = usedHeuristics;
             pathTraverser.Field<bool>("inUse").Value = true;
+        }
+    }
+    public static class PawnPath_RawData_Extensions
+    {
+        private static readonly ConditionalWeakTable<PawnPath, object> rawPathData =
+            new ConditionalWeakTable<PawnPath, object>();
+
+        public static (List<IntVec3> nodes, int cost) GetRawPathData(this PawnPath path)
+        {
+            if (rawPathData.TryGetValue(path, out var data))
+            {
+                return ((List<IntVec3>, int))data;
+            }
+            return (null, 0);
+        }
+
+        public static void SetRawPathData(this PawnPath path, (List<IntVec3> nodes, int cost) data)
+        {
+            rawPathData.Add(path, data);
         }
     }
 }
