@@ -51,25 +51,15 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
     public static class Pawn_JobTracker_StartJob_Patch
     {
-        public static bool Prefix(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver, ThinkTreeDef thinkTree)
+        public static bool Prefix(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
             if (Multiplayer.Client == null || Multiplayer.dontSync) return true;
-
-            // On the host, the AI runs normally.
-            if (Multiplayer.LocalServer != null)
+            // Only block AI jobs (which have a jobGiver) on the client.
+            // Let the host's AI run, and let player commands run everywhere for now.
+            if (Multiplayer.LocalServer == null && jobGiver != null)
             {
-                // This is a player-ordered job if jobGiver is null. Let it run.
-                if (jobGiver == null) return true;
-
-                // This is an AI job. The host runs it, and the path will be synced later.
-                return true;
+                return false;
             }
-
-            // On the client, block AI jobs.
-            if (jobGiver != null) return false;
-
-            // Allow player-ordered jobs on the client, but they will be desynced until we sync them.
-            // For now, this is fine as we are focused on the main AI pathing.
             return true;
         }
     }
@@ -384,19 +374,7 @@ namespace Multiplayer.Client
             }
         }
 
-        [SyncMethod]
-        public static void StartJob(Pawn pawn, JobParams jobParams, StartJobContext context)
-        {
-            if (pawn == null || pawn.jobs == null || pawn.Dead) return;
-            Job job = jobParams.ToJob();
-            JobCondition lastJobEndCondition = (JobCondition)context.lastJobEndConditionByte;
-            JobTag? tag = context.hasTag ? new JobTag?((JobTag)context.tagValueByte) : null;
-            bool? keepCarryingThingOverride = context.hasCarryOverride ? new bool?(context.carryOverrideValue) : null;
-            using (new Multiplayer.DontSync())
-            {
-                pawn.jobs.StartJob(job, lastJobEndCondition, job.jobGiver, context.resumeCurJobAfterwards, context.cancelBusyStances, job.jobGiverThinkTree, tag, context.fromQueue, context.canReturnCurJobToPool, keepCarryingThingOverride, context.continueSleeping, context.preToilReservationsCanFail);
-            }
-        }
+        
 
         [SyncMethod]
         public static void SetJobVerb(Pawn pawn, JobParams jobParams)
@@ -411,11 +389,10 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            if (Multiplayer.LocalServer != null) return;
             if (pawn == null || pawn.pather == null || surrogate == null) return;
 
             PawnPath path = surrogate.ToPawnPath(pawn);
-            Log.Message($"[CLIENT] {pawn.LabelShortCap} is RECEIVING path with {surrogate.NodeCount} nodes.");
+            Log.Message($"[SYNC] {pawn.LabelShortCap} on {(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} is RECEIVING path with {surrogate.NodeCount} nodes.");
 
             if (pawn.pather.curPath != null) pawn.pather.curPath.ReleaseToPool();
             pawn.pather.curPath = path;
