@@ -100,7 +100,6 @@ namespace Multiplayer.Client
             {
                 map.MapPreTick();
                 mapTicks++;
-                Find.TickManager.ticksGameInt = mapTicks;
 
                 tickListNormal.Tick();
                 tickListRare.Tick();
@@ -164,18 +163,21 @@ namespace Multiplayer.Client
                     force: true);
             }
 
-            prevTime = TimeSnapshot.GetAndSetFromMap(map);
+            // Set our global tick override to this map's specific tick count.
+            // The patches in TileTemperatures.cs will ensure this is used safely.
+            TickManager_Patch_State.TicksGame_Agnostic = this.mapTicks;
 
+            // Set the map's local storyteller as the current one
             prevStoryteller = Current.Game.storyteller;
             prevStoryWatcher = Current.Game.storyWatcher;
-
             Current.Game.storyteller = storyteller;
             Current.Game.storyWatcher = storyWatcher;
 
+            // Push the RNG state
             Rand.PushState();
             Rand.StateCompressed = randState;
 
-            // Reset the effects of SkyManager.SkyManagerUpdate
+            // Reset sky glow
             map.skyManager.curSkyGlowInt = map.skyManager.CurrentSkyTarget().glow;
         }
 
@@ -184,7 +186,7 @@ namespace Multiplayer.Client
             Current.Game.storyteller = prevStoryteller;
             Current.Game.storyWatcher = prevStoryWatcher;
 
-            prevTime?.Set();
+            TickManager_Patch_State.TicksGame_Agnostic = null;
 
             randState = Rand.StateCompressed;
             Rand.PopState();
