@@ -14,12 +14,13 @@ namespace Multiplayer.Client.Patches
     /// preventing them from choosing new jobs and creating a desync.
     /// </summary>
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TickManagerUpdate))]
-    public static class Host_MapPawns_Tick_Patch
+    public static class Always_Tick_All_Pawns_Patch // Renamed for clarity
     {
-        static void Postfix(TickManager __instance)
+        static void Postfix()
         {
-            // This logic must ONLY run on the host.
-            if (Multiplayer.LocalServer == null) return;
+            // This patch must run for everyone.
+            // Do not run if not in a multiplayer game.
+            if (Multiplayer.Client == null) return;
 
             // Do not run during world-only ticking (e.g., on the planet view).
             if (Find.CurrentMap == null) return;
