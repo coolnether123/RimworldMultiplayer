@@ -21,7 +21,7 @@ namespace Multiplayer.Client
         static PathingSyncHarmony()
         {
             var harmony = Multiplayer.harmony;
-            Log.Message("[Multiplayer-Pathing] Applying definitive sync patches (v17)...");
+            Log.Message("[Multiplayer-Pathing] Applying definitive sync patches (v18)...");
 
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)),
