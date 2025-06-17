@@ -52,12 +52,15 @@ namespace Multiplayer.Client
 
     public static class PathingPatches
     {
+        public static bool IsExecutingSyncCommand = false;
+
         private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
 
         // This patch now ONLY has one job: stop clients from starting AI jobs.
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
+            if (IsExecutingSyncCommand) return true;
 
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
@@ -288,27 +291,45 @@ namespace Multiplayer.Client
         {
             MpTrace.Info($"Executing synced AI job ({jobParams.def.defName}) for {pawn?.LabelShortCap}.");
 
-            if (Multiplayer.LocalServer != null) return; // Host only sends, doesn't execute this part
+            if (Multiplayer.LocalServer != null) return;
 
-            Job job = jobParams.ToJob();
-            using (new Multiplayer.DontSync())
+            // vvv WRAP THE LOGIC IN TRY/FINALLY vvv
+            try
             {
-                pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, resumeCurJobAfterwards: false, cancelBusyStances: true, thinkTree: job.jobGiverThinkTree);
+                PathingPatches.IsExecutingSyncCommand = true;
+                Job job = jobParams.ToJob();
+                using (new Multiplayer.DontSync())
+                {
+                    pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, resumeCurJobAfterwards: false, cancelBusyStances: true, thinkTree: job.jobGiverThinkTree);
+                }
             }
+            finally
+            {
+                PathingPatches.IsExecutingSyncCommand = false;
+            }
+            // ^^^ WRAP THE LOGIC IN TRY/FINALLY ^^^
         }
 
         [SyncMethod]
         public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
-            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
-            Log.Message($"[{side}-SYNC] TakeOrderedJob called for {pawn?.LabelShortCap}.");
+            MpTrace.Info($"Executing synced ordered job ({jobParams.def.defName}) for {pawn?.LabelShortCap}.");
 
-            // This one should run everywhere
-            Job job = jobParams.ToJob();
-            using (new Multiplayer.DontSync())
+            // vvv WRAP THE LOGIC IN TRY/FINALLY vvv
+            try
             {
-                pawn.jobs.TryTakeOrderedJob(job, tag);
+                PathingPatches.IsExecutingSyncCommand = true;
+                Job job = jobParams.ToJob();
+                using (new Multiplayer.DontSync())
+                {
+                    pawn.jobs.TryTakeOrderedJob(job, tag);
+                }
             }
+            finally
+            {
+                PathingPatches.IsExecutingSyncCommand = false;
+            }
+            // ^^^ WRAP THE LOGIC IN TRY/FINALLY ^^^
         }
 
         [SyncMethod]
@@ -316,24 +337,32 @@ namespace Multiplayer.Client
         {
             MpTrace.Info($"Applying synced path to {pawn?.LabelShortCap}. (Valid: {surrogate.isValid}, Nodes: {surrogate.NodeCount})");
 
-            if (Multiplayer.LocalServer != null) return; // Host only sends
+            if (Multiplayer.LocalServer != null) return;
             if (pawn == null || pawn.pather == null) return;
 
-            var pather = pawn.pather;
-            PawnPath newPath = surrogate.ToPawnPath(pawn);
-
-            pather.curPath?.ReleaseToPool();
-            pather.curPath = newPath;
-
-            if (newPath.Found)
+            // Although this doesn't call StartJob, it's good practice to wrap it
+            // in case future logic changes. It has no negative side effects.
+            try
             {
-                // This call is important. When a pather gets a new path, it needs to be reset
-                // to its current position to start following it correctly.
-                pather.ResetToCurrentPosition();
+                PathingPatches.IsExecutingSyncCommand = true;
+                var pather = pawn.pather;
+                PawnPath newPath = surrogate.ToPawnPath(pawn);
+
+                pather.curPath?.ReleaseToPool();
+                pather.curPath = newPath;
+
+                if (newPath.Found)
+                {
+                    pather.ResetToCurrentPosition();
+                }
+                else
+                {
+                    pather.PatherFailed();
+                }
             }
-            else
+            finally
             {
-                pather.PatherFailed();
+                PathingPatches.IsExecutingSyncCommand = false;
             }
         }
     }
