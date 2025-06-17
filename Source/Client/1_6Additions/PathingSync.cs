@@ -54,7 +54,7 @@ namespace Multiplayer.Client
     {
         private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
-        private static Job lastSyncedJob;
+        private static Job markedJobForSync;
 
         // CHECKPOINT 1: Intercepting an AI Job
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
@@ -77,7 +77,7 @@ namespace Multiplayer.Client
             // We mark the job we intend to sync.
             if (Multiplayer.LocalServer != null && jobGiver != null)
             {
-                lastSyncedJob = newJob;
+                markedJobForSync = newJob;
             }
 
             return true;
@@ -86,12 +86,12 @@ namespace Multiplayer.Client
         public static void Postfix_StartJob(Pawn_JobTracker __instance)
         {
             // If we marked a job to be synced, and the pawn's current job is that job, then sync it.
-            if (lastSyncedJob != null && __instance.curJob == lastSyncedJob)
+            if (markedJobForSync != null && __instance.curJob == markedJobForSync)
             {
                 Log.Message($"[Pathing-Checkpoint 1A - HOST] AI job {__instance.curJob.def.defName} for {__instance.pawn.LabelShortCap} started successfully. Syncing.");
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
             }
-            lastSyncedJob = null; // Clear the marker
+            markedJobForSync = null; // Clear the marker
         }
 
         // CHECKPOINT 2: Intercepting a Player-Ordered Job
@@ -116,7 +116,9 @@ namespace Multiplayer.Client
                 lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
                 {
+                    // Send to remote clients
                     SyncedActions.SetPawnPath(pawn, newSurrogate);
+                    // Manually apply to local client
                     PathingClientUtil.SetPawnPath(pawn, newSurrogate, isLocal: true);
                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
                 }
