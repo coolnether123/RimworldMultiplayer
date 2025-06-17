@@ -102,6 +102,10 @@ namespace Multiplayer.Common
 
         public virtual void HandleReceiveRaw(ByteReader data, bool reliable)
         {
+            // NEW CHECKPOINT A
+            // Let's see what the raw data looks like just before parsing.
+            Verse.Log.Message($"[CLIENT-NET-TRACE] HandleReceiveRaw. Data length: {data.Length}. State: {State}");
+
             if (State == ConnectionStateEnum.Disconnected)
                 return;
 
@@ -111,6 +115,10 @@ namespace Multiplayer.Common
             byte info = data.ReadByte();
             byte msgId = (byte)(info & 0x3F);
             byte fragState = (byte)(info & 0xC0);
+
+            // NEW CHECKPOINT B
+            // Let's see what packet ID we parsed.
+            Verse.Log.Message($"[CLIENT-NET-TRACE] HandleReceiveRaw parsed packet ID: {msgId} ({(Packets)msgId}). Frag state: {fragState}.");
 
             HandleReceiveMsg(msgId, fragState, data, reliable);
         }
@@ -126,16 +134,26 @@ namespace Multiplayer.Common
                 throw new PacketReadException($"Bad packet id {msgId}");
 
             Packets packetType = (Packets)msgId;
+
+            // NEW CHECKPOINT C
+            // Let's see which handler we are about to use.
+            Verse.Log.Message($"[CLIENT-NET-TRACE] HandleReceiveMsg for packet: {packetType}. Current state: {State}");
+
             ServerLog.Verbose($"Received packet {this}: {packetType}");
 
             var handler = StateObj?.GetPacketHandler(packetType) ?? MpConnectionState.packetHandlers[(int)State, (int)packetType];
             if (handler == null)
             {
+                // NEW CHECKPOINT D - This is a major error if it happens.
+                Verse.Log.Warning($"[CLIENT-NET-TRACE] No handler found for packet {packetType} in state {State}. Packet dropped.");
                 if (reliable && !Lenient)
                     throw new PacketReadException($"No handler for packet {packetType} in state {State}");
 
                 return;
             }
+
+            // NEW CHECKPOINT E - We found a handler, about to process.
+            Verse.Log.Message($"[CLIENT-NET-TRACE] Found handler for {packetType}. Fragmented: {fragState != FragNone}.");
 
             if (fragState != FragNone && fragmented == null)
                 fullSize = reader.ReadInt32();
