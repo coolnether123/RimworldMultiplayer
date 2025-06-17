@@ -3,6 +3,7 @@ using HarmonyLib;
 using RimWorld;
 using Verse;
 using Verse.AI;
+using static Verse.AI.ThingCountTracker;
 
 namespace Multiplayer.Client.Patches
 {
@@ -15,6 +16,10 @@ namespace Multiplayer.Client.Patches
             if (Multiplayer.Client == null || Multiplayer.LocalServer == null)
                 return;
 
+            Log.Message("[CoreTick_Patch] Postfix running - forcing AI tick");
+
+            int pawnCount = 0; 
+
             // Force AI thinking on all pawns
             foreach (var map in Find.Maps)
             {
@@ -26,6 +31,7 @@ namespace Multiplayer.Client.Patches
                     pawn.jobs.JobTrackerTickInterval(1);
                 }
             }
+            Log.Message($"[CoreTick_Patch] Forced AI tick on {pawnCount} pawns");
         }
     }
 }

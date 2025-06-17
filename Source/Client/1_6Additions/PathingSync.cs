@@ -58,6 +58,8 @@ namespace Multiplayer.Client
         // This patch now ONLY has one job: stop clients from starting AI jobs.
         public static bool Prefix_StartJob(ThinkNode jobGiver)
         {
+            Log.Message($"[StartJob-Prefix] jobGiver={jobGiver?.GetType()?.Name}, IsHost={Multiplayer.LocalServer != null}");
+
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
                 // We are a client, and this is an AI job. Block it.
@@ -69,7 +71,11 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
+            Log.Message($"[StartJob-Postfix] Pawn={__instance.pawn?.LabelShort}, Job={__instance.curJob?.def?.defName}, jobGiver={jobGiver?.GetType()?.Name}");
+
             if (Multiplayer.LocalServer == null || jobGiver == null || __instance.curJob == null) return;
+
+            Log.Message($"[StartJob-Postfix] SYNCING job {__instance.curJob.def.defName} for {__instance.pawn.LabelShort}");
             SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
         }
 
