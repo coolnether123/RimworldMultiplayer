@@ -10,7 +10,7 @@ namespace Multiplayer.Client
     public class MpSettings : ModSettings
     {
         // 1.6 Debugging
-        public bool syncTracing = false;
+        public bool syncTracing = true;
 
 
         public string username;
