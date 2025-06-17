@@ -24,8 +24,9 @@ namespace Multiplayer.Client
             Log.Message("[Multiplayer-Pathing] Applying instrumentation patches (v9)...");
 
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
-                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)));
-            
+                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)),
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_StartJob)));
+
 
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_TryTakeOrderedJob)));
@@ -53,19 +54,46 @@ namespace Multiplayer.Client
     {
         private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
+        private static Job lastSyncedJob;
 
         // CHECKPOINT 1: Intercepting an AI Job
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
         {
             if (Multiplayer.Client == null) return true;
-            if (__instance.pawn.IsHashIntervalTick(60) && __instance.curJob != null) __instance.EndCurrentJob(JobCondition.InterruptForced);
-            if (Multiplayer.ShouldSync && jobGiver != null)
+
+            // Block job churn
+            if (__instance.curJob != null && jobGiver != null && newJob.JobIsSameAs(__instance.pawn, __instance.curJob))
             {
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
                 return false;
             }
+
+            if (Multiplayer.LocalServer == null && jobGiver != null)
+            {
+                // A client should not start an AI job.
+                return false;
+            }
+
+            // Host will run the original StartJob. We will sync it in the Postfix.
+            // We mark the job we intend to sync.
+            if (Multiplayer.LocalServer != null && jobGiver != null)
+            {
+                lastSyncedJob = newJob;
+            }
+
             return true;
         }
+
+        public static void Postfix_StartJob(Pawn_JobTracker __instance)
+        {
+            // If we marked a job to be synced, and the pawn's current job is that job, then sync it.
+            if (lastSyncedJob != null && __instance.curJob == lastSyncedJob)
+            {
+                Log.Message($"[Pathing-Checkpoint 1A - HOST] AI job {__instance.curJob.def.defName} for {__instance.pawn.LabelShortCap} started successfully. Syncing.");
+                SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
+            }
+            lastSyncedJob = null; // Clear the marker
+        }
+
         // CHECKPOINT 2: Intercepting a Player-Ordered Job
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
