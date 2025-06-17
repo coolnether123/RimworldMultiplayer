@@ -37,7 +37,7 @@ namespace Multiplayer.Client
             //Log.Message("Made it here #1");
             int syncId = data.ReadInt32();
             SyncHandler handler;
-           //Log.Message("Made it here #2");
+            //Log.Message("Made it here #2");
 
             try
             {
@@ -51,7 +51,7 @@ namespace Multiplayer.Client
             //Log.Message("Made it here #3");
 
             List<object> prevSelected = Find.Selector.selected;
-            List<WorldObject> prevWorldSelected = Find.WorldSelector.SelectedObjects;
+            List<WorldObject> prevWorldSelected = Find.WorldSelector.SelectedObjects.ToList();
             //Log.Message("Made it here #4");
 
             bool shouldQueue = false;
@@ -72,14 +72,13 @@ namespace Multiplayer.Client
 
                 if (handler.context.HasFlag(SyncContext.WorldSelected))
                 {
+                    // It's safer to clear and re-select than to assign the list directly.
+                    Find.WorldSelector.ClearSelection();
                     List<ISelectable> selected = SyncSerialization.ReadSync<List<ISelectable>>(data);
-                    //Find.WorldSelector.selected = selected.Cast<WorldObject>().AllNotNull().ToList();
-                    foreach (var item in selected.Cast<WorldObject>().AllNotNull().ToList())
+                    foreach (var item in selected.Cast<WorldObject>().AllNotNull())
                     {
-                        Find.WorldSelector.Select(item);
+                        Find.WorldSelector.Select(item, playSound: false);
                     }
- //                   AccessTools.Property(typeof(WorldSelector), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
-
                 }
 
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
@@ -96,27 +95,20 @@ namespace Multiplayer.Client
             }
             finally
             {
-                Log.Message(Find.WorldSelector.selected == null ? "null" : Find.WorldSelector.selected.ToString());
-                //Log.Message("Makes it here #6");
+                // Restore selection states after the handler has run.
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
-                //Log.Message("Makes it here #7");
-                Find.Selector.selected = prevSelected;
-                //Log.Message("Makes it here #8");
-                //Find.WorldSelector.selected = prevWorldSelected;
-                Log.Message(prevWorldSelected == null ? "null" : prevWorldSelected.ToString());
 
-                //Log.Message("Makes it here #9");
+                // Restore map selection
+                Find.Selector.selected = prevSelected;
+
+                // Restore world selection
+                Find.WorldSelector.ClearSelection();
                 foreach (var item in prevWorldSelected)
                 {
-                    Find.WorldSelector.Select(item);
+                    Find.WorldSelector.Select(item, playSound: false);
                 }
-                //Log.Message("Makes it here #10");
-
-/*
-                var prop = AccessTools.Property(typeof(WorldSelector), "selected");
-                    prop.SetValue(Find.WorldSelector.selected, prevWorldSelected); //prevWorldSelected is null
-            */}
+            }
 
             return handler;
         }
