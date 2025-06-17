@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace Multiplayer.Common
 {
@@ -15,6 +15,8 @@ namespace Multiplayer.Common
 
         public void Send(CommandType cmd, int factionId, int mapId, byte[] data, ServerPlayer? sourcePlayer = null, ServerPlayer? fauxSource = null)
         {
+            // We are looking for CommandType.Sync, which is used for [SyncMethod] calls.
+            Verse.Log.Message($"[SERVER-COMMANDHANDLER] Send called. CommandType: {cmd}, MapID: {mapId}, Data Length: {data.Length}");
             // policy
             if (sourcePlayer != null)
             {
@@ -49,13 +51,17 @@ namespace Multiplayer.Common
             byte[] toSend = toSave.Append(new byte[] { 0 });
             byte[] toSendSource = toSave.Append(new byte[] { 1 });
 
+            // === NEW CHECKPOINT - Who are we sending it to? ===
+            int playingPlayerCount = 0;
             foreach (var player in server.PlayingPlayers)
             {
+                playingPlayerCount++;
                 player.conn.Send(
                     Packets.Server_Command,
                     sourcePlayer == player ? toSendSource : toSend
                 );
             }
+            Verse.Log.Message($"[SERVER-COMMANDHANDLER] Packet broadcast to {playingPlayerCount} playing players.");
 
             SentCmds++;
         }
