@@ -47,6 +47,9 @@ namespace Multiplayer.Client
         {
             ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
             cmd.issuedBySelf = data.ReadBool();
+
+            MpTrace.Verbose($"Client received command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}. Scheduling for execution.");
+
             Session.ScheduleCommand(cmd);
 
             Multiplayer.session.receivedCmds++;

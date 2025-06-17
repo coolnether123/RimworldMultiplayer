@@ -34,6 +34,7 @@ namespace Multiplayer.Client
 
         public static SyncHandler HandleCmd(ByteReader data)
         {
+            MpTrace.Verbose($"-- SyncUtil.HandleCmd invoked --");
             //Log.Message("Made it here #1");
             int syncId = data.ReadInt32();
             SyncHandler handler;
@@ -42,6 +43,8 @@ namespace Multiplayer.Client
             try
             {
                 handler = Sync.handlers[syncId];
+
+                MpTrace.Verbose($"--> Found handler for syncId: {syncId}. Preparing to execute.");
             }
             catch (ArgumentOutOfRangeException)
             {

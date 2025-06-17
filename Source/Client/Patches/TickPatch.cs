@@ -206,6 +206,10 @@ namespace Multiplayer.Client
                 while (tickable.Cmds.Count > 0 && tickable.Cmds.Peek().ticks == curTimer)
                 {
                     ScheduledCommand cmd = tickable.Cmds.Dequeue();
+                    if (cmd.type == CommandType.Sync) // Only log the important ones
+                    {
+                        MpTrace.Verbose($"Client EXECUTING DEQUEUED command: {cmd.type}, Target Map: {cmd.mapId}, Tick: {cmd.ticks}.");
+                    }
                     tickable.ExecuteCmd(cmd);
 
                     if (LongEventHandler.eventQueue.Count > 0) return true; // Yield to e.g. join-point creation
