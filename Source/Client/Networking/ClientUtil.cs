@@ -51,6 +51,8 @@ namespace Multiplayer.Client
 
         public static void HandleReceive(ByteReader data, bool reliable)
         {
+            // NEW CHECKPOINT: This is the very first point of entry for a received packet on the client.
+            Log.Message($"[CLIENT-NET] HandleReceive called. Packet size: {data.Length}. Reliable: {reliable}.");
             try
             {
                 Multiplayer.Client.HandleReceiveRaw(data, reliable);
