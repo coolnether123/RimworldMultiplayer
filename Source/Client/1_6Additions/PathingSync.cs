@@ -58,29 +58,18 @@ namespace Multiplayer.Client
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
         {
             if (Multiplayer.Client == null) return true;
-
-            // Stop AI from re-issuing the same job and causing a loop
-            if (__instance.curJob != null && jobGiver != null && newJob.JobIsSameAs(__instance.pawn, __instance.curJob))
+            if (__instance.pawn.IsHashIntervalTick(60) && __instance.curJob != null) __instance.EndCurrentJob(JobCondition.InterruptForced);
+            if (Multiplayer.ShouldSync && jobGiver != null)
             {
+                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
                 return false;
             }
-
-            if (jobGiver == null) return true;
-
-            if (Multiplayer.LocalServer != null)
-            {
-                Log.Message($"[Pathing-Checkpoint 1A - HOST] AI job {newJob.def.defName} for {__instance.pawn.LabelShortCap}. Syncing.");
-                // Host's AI decides on a job. Sync it to all clients.
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
-            }
-            return false;
+            return true;
         }
         // CHECKPOINT 2: Intercepting a Player-Ordered Job
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
             if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
-
-            Log.Message($"[Pathing-Checkpoint 2 - {Multiplayer.Client.State}] Player-ordered job {job.def.defName} for {__instance.pawn.LabelShortCap}. Syncing.");
             SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
             return false;
         }
@@ -89,29 +78,18 @@ namespace Multiplayer.Client
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
             if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
-
             Pawn pawn = __instance.pawn;
             PawnPath currentPath = __instance.curPath;
-
             lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
-
             if (currentPath != cachedPathInstance)
             {
                 lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
                 var newSurrogate = new PawnPathSurrogate(currentPath);
                 lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
-
                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
                 {
-                    Log.Message($"[Pathing-Checkpoint 3 - HOST] New path detected for {pawn.LabelShortCap}. Nodes: {newSurrogate.NodeCount}, Valid: {newSurrogate.isValid}.");
-
-                    // CHECKPOINT 4: Sending path to remote clients
                     SyncedActions.SetPawnPath(pawn, newSurrogate);
-                    Log.Message($"[Pathing-Checkpoint 4 - HOST] SyncMethod called for remote clients for {pawn.LabelShortCap}.");
-
-                    // CHECKPOINT 5: Applying path to local client instance
                     PathingClientUtil.SetPawnPath(pawn, newSurrogate, isLocal: true);
-
                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
                 }
             }
@@ -119,20 +97,14 @@ namespace Multiplayer.Client
 
         public static bool Prefix_SetNewPathRequest(Pawn_PathFollower __instance)
         {
-            if (Multiplayer.Client != null && Multiplayer.LocalServer == null)
-            {
-                return false;
-            }
-            return true;
+            return Multiplayer.Client == null || Multiplayer.LocalServer != null;
         }
 
         public static void Postfix_PawnDeSpawn(Pawn __instance)
         {
-            if (Multiplayer.Client != null)
-            {
-                lastPathInstanceCache.Remove(__instance.thingIDNumber);
-                lastSyncedSurrogateCache.Remove(__instance.thingIDNumber);
-            }
+            if (Multiplayer.Client == null) return;
+            lastPathInstanceCache.Remove(__instance.thingIDNumber);
+            lastSyncedSurrogateCache.Remove(__instance.thingIDNumber);
         }
     }
 
@@ -300,34 +272,17 @@ namespace Multiplayer.Client
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate, bool isLocal = false)
         {
             string side = isLocal ? "HOST (Local Client)" : "CLIENT (Remote)";
-
-            // CHECKPOINT 6: Client has received the path data
-            Log.Message($"[Pathing-Checkpoint 6 - {side}] Received path for {pawn?.LabelShortCap ?? "NULL PAWN"}.");
-
             if (pawn == null || pawn.pather == null || surrogate == null)
             {
-                Log.Warning($"[{side}] Invalid SetPawnPath call. Pawn: {pawn?.ToString() ?? "null"}, Surrogate: {surrogate?.ToString() ?? "null"}"); return;
+                Log.Warning($"[{side}] Invalid SetPawnPath call.");
+                return;
             }
-
-            Log.Message($"[{side}] Pawn:{pawn.LabelShortCap} ID:{pawn.thingIDNumber} | Processing synced path with {surrogate.NodeCount} nodes. IsValid: {surrogate.isValid}");
-
             var pather = pawn.pather;
             PawnPath newPath = surrogate.ToPawnPath(pawn);
-
             pather.curPath?.ReleaseToPool();
             pather.curPath = newPath;
-
-            if (newPath.Found)
-            {
-                // CHECKPOINT 7: Applying the valid path
-                Log.Message($"[Pathing-Checkpoint 7 - {side}] Applying valid path to {pawn.LabelShortCap}. Resetting pather.");
-                pather.ResetToCurrentPosition();
-            }
-            else
-            {
-                Log.Warning($"[Pathing-Checkpoint 7 - {side}] Applying invalid/not-found path to {pawn.LabelShortCap}. Pather failing.");
-                pather.PatherFailed();
-            }
+            if (newPath.Found) pather.ResetToCurrentPosition();
+            else pather.PatherFailed();
         }
     }
 
@@ -340,38 +295,24 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void StartJobAI(Pawn pawn, JobParams jobParams)
         {
-            // CHECKPOINT 1B: Job received by client
-            Log.Message($"[Pathing-Checkpoint 1B - {Multiplayer.Client.State}] Received AI job {jobParams.def.defName} for {pawn.LabelShortCap}. Starting.");
-
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
-            {
-                pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, false, true, job.jobGiverThinkTree);
-            }
+                pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, resumeCurJobAfterwards: false, cancelBusyStances: true, thinkTree: job.jobGiverThinkTree);
         }
 
         [SyncMethod]
         public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
-            // CHECKPOINT 2B: Job received by client
-            Log.Message($"[Pathing-Checkpoint 2B - {Multiplayer.Client.State}] Received player-ordered job {jobParams.def.defName} for {pawn.LabelShortCap}. Taking.");
-
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
-            {
                 pawn.jobs.TryTakeOrderedJob(job, tag);
-            }
         }
 
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            // When a remote client receives this, call the logic method.
-            // The host's local client will call this method directly from the PatherTick patch.
             if (Multiplayer.LocalServer == null)
-            {
                 PathingClientUtil.SetPawnPath(pawn, surrogate, isLocal: false);
-            }
         }
     }
 }

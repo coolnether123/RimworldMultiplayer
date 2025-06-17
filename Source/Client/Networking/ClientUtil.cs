@@ -51,35 +51,31 @@ namespace Multiplayer.Client
 
         public static void HandleReceive(ByteReader data, bool reliable)
         {
-            // We must queue the packet processing to happen on the main thread in the correct order.
-            var dataBytes = data.ReadRaw(data.Length);
+            // Create a copy of the raw byte data IMMEDIATELY.
+            // The buffer from LiteNetLib will be reused, so we can't delay reading it.
+            var dataCopy = new byte[data.Length];
+            Buffer.BlockCopy(data.ReadRaw(data.Length), 0, dataCopy, 0, dataCopy.Length);
 
-            // CHECKPOINT X1: Confirming the packet is being queued from the network thread.
-            if (Multiplayer.Client != null)
-                Log.Message($"[CLIENT-NET] Queuing packet. Size: {dataBytes.Length}, Reliable: {reliable}");
+            // Enqueue an action that uses the COPY of the data.
+            OnMainThread.Enqueue(() => ProcessPacket(dataCopy, reliable));
+        }
 
-            OnMainThread.Enqueue(() =>
+        private static void ProcessPacket(byte[] data, bool reliable)
+        {
+            if (Multiplayer.Client == null) return;
+
+            try
             {
-                if (Multiplayer.Client == null)
-                {
-                    Log.Warning("[CLIENT-NET] Process queue: Multiplayer.Client is null, dropping packet.");
-                    return;
-                }
-
-                try
-                {
-                    // CHECKPOINT X2: Confirming the queued action is being executed on the main game thread.
-                    Log.Message($"[CLIENT-NET] Dequeued and processing packet. Size: {dataBytes.Length}");
-                    Multiplayer.Client.HandleReceiveRaw(new ByteReader(dataBytes), reliable);
-                }
-                catch (Exception e)
-                {
-                    Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
-                    Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
-                    ConnectionStatusListeners.TryNotifyAll_Disconnected();
-                    Multiplayer.StopMultiplayer();
-                }
-            });
+                // Use the copied data to create a new ByteReader for processing.
+                Multiplayer.Client.HandleReceiveRaw(new ByteReader(data), reliable);
+            }
+            catch (Exception e)
+            {
+                Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
+                Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
+                ConnectionStatusListeners.TryNotifyAll_Disconnected();
+                Multiplayer.StopMultiplayer();
+            }
         }
     }
 }
