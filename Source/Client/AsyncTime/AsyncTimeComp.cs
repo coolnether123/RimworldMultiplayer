@@ -216,6 +216,9 @@ namespace Multiplayer.Client
 
         public void ExecuteCmd(ScheduledCommand cmd)
         {
+            // === STEP 5: LOG COMMAND EXECUTION START ===
+            MpTrace.Info($"ExecuteCmd (AsyncTimeComp): START executing command {cmd.type} for map {map.uniqueID} at tick {mapTicks}.");
+
             CommandType cmdType = cmd.type;
             LoggingByteReader data = new LoggingByteReader(cmd.data);
             data.Log.Node($"{cmdType} Map {map.uniqueID}");
@@ -247,8 +250,10 @@ namespace Multiplayer.Client
             {
                 if (cmdType == CommandType.Sync)
                 {
+                    MpTrace.Info("--> Command is Sync. Calling SyncUtil.HandleCmd.");
                     var handler = SyncUtil.HandleCmd(data);
                     data.Log.current.text = handler.ToString();
+                    MpTrace.Info("--> SyncUtil.HandleCmd finished.");
                 }
 
                 if (cmdType == CommandType.DebugTools)
@@ -273,6 +278,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
+                MpTrace.Error($"ExecuteCmd: Exception during command execution ({cmdType}): {e}");
                 MpLog.Error($"Map cmd exception ({cmdType}): {e}");
             }
             finally
@@ -299,6 +305,8 @@ namespace Multiplayer.Client
                     TrySetCurrentMap(prevMap);
 
                 keepTheMap = false;
+
+                MpTrace.Info($"ExecuteCmd (AsyncTimeComp): FINISHED executing command {cmd.type}.");
 
                 Multiplayer.game.sync.TryAddCommandRandomState(randState);
 

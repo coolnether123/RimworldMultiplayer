@@ -45,12 +45,16 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
+            // === STEP 3: LOG PACKET HANDLER INVOCATION ===
+            MpTrace.Info("HandleCommand (ClientPlayingState): Received Server_Command packet.");
+
             ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
             cmd.issuedBySelf = data.ReadBool();
 
-            MpTrace.Verbose($"Client received command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}. Scheduling for execution.");
+            MpTrace.Info($"--> Parsed command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
 
             Session.ScheduleCommand(cmd);
+            MpTrace.Info("--> Command successfully scheduled in MultiplayerSession.");
 
             Multiplayer.session.receivedCmds++;
             Multiplayer.session.ProcessTimeControl();

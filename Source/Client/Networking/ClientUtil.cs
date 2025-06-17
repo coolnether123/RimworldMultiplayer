@@ -62,15 +62,24 @@ namespace Multiplayer.Client
 
         private static void ProcessPacket(byte[] data, bool reliable)
         {
-            if (Multiplayer.Client == null) return;
+            // === STEP 1: LOG ARRIVAL ON MAIN THREAD ===
+            MpTrace.Info("ProcessPacket: Packet has arrived on the main thread. About to process.");
+
+            if (Multiplayer.Client == null)
+            {
+                MpTrace.Warning("ProcessPacket: Multiplayer.Client is null, aborting.");
+                return;
+            }
 
             try
             {
-                // Use the copied data to create a new ByteReader for processing.
                 Multiplayer.Client.HandleReceiveRaw(new ByteReader(data), reliable);
+                // === STEP 2: LOG SUCCESSFUL PROCESSING ===
+                MpTrace.Info("ProcessPacket: HandleReceiveRaw completed without error.");
             }
             catch (Exception e)
             {
+                MpTrace.Error($"ProcessPacket: Exception during HandleReceiveRaw: {e}");
                 Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
                 Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
                 ConnectionStatusListeners.TryNotifyAll_Disconnected();

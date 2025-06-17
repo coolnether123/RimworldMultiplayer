@@ -218,15 +218,35 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
-            MpLog.Debug(cmd.ToString());
+            // === STEP 4: LOG SCHEDULING ATTEMPT ===
+            MpTrace.Info($"ScheduleCommand (MultiplayerSession): Scheduling command {cmd.type} for tick {cmd.ticks}.");
+
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
 
-            if (Current.ProgramState != ProgramState.Playing) return;
+            if (Current.ProgramState != ProgramState.Playing)
+            {
+                MpTrace.Warning("--> Current.ProgramState is not 'Playing'. Command will be added to snapshot but not queued for immediate execution.");
+                return;
+            }
 
             if (cmd.mapId == ScheduledCommand.Global)
+            {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
+                MpTrace.Info("--> Queued command in AsyncWorldTimeComp.");
+            }
             else
-                cmd.GetMap()?.AsyncTime().cmds.Enqueue(cmd);
+            {
+                Map map = cmd.GetMap();
+                if (map != null)
+                {
+                    map.AsyncTime().cmds.Enqueue(cmd);
+                    MpTrace.Info($"--> Queued command in AsyncTimeComp for map {cmd.mapId}.");
+                }
+                else
+                {
+                    MpTrace.Warning($"--> Could not find map with id {cmd.mapId} to queue command.");
+                }
+            }
         }
 
         public void Update()
