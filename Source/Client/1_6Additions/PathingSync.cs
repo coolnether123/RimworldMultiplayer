@@ -21,7 +21,7 @@ namespace Multiplayer.Client
         static PathingSyncHarmony()
         {
             var harmony = Multiplayer.harmony;
-            Log.Message("[Multiplayer-Pathing] Applying clean, non-bandaid patches (v15)...");
+            Log.Message("[Multiplayer-Pathing] Applying definitive sync patches (v17)...");
 
             harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
                 prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)),
@@ -58,7 +58,6 @@ namespace Multiplayer.Client
         // This patch now ONLY has one job: stop clients from starting AI jobs.
         public static bool Prefix_StartJob(ThinkNode jobGiver)
         {
-            Log.Message($"[StartJob-Prefix] jobGiver={jobGiver?.GetType()?.Name}, IsHost={Multiplayer.LocalServer != null}");
 
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
@@ -71,12 +70,10 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
-            Log.Message($"[StartJob-Postfix] Pawn={__instance.pawn?.LabelShort}, Job={__instance.curJob?.def?.defName}, jobGiver={jobGiver?.GetType()?.Name}");
-
-            if (Multiplayer.LocalServer == null || jobGiver == null || __instance.curJob == null) return;
-
-            Log.Message($"[StartJob-Postfix] SYNCING job {__instance.curJob.def.defName} for {__instance.pawn.LabelShort}");
-            SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
+            if (Multiplayer.LocalServer != null && jobGiver != null && __instance.curJob != null)
+            {
+                SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
+            }
         }
 
         // CHECKPOINT 2: Intercepting a Player-Ordered Job
@@ -285,8 +282,11 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void StartJobAI(Pawn pawn, JobParams jobParams)
         {
-            // Client receives job from host
+            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
+            Log.Message($"[{side}-SYNC] StartJobAI called for {pawn?.LabelShortCap}.");
+
             if (Multiplayer.LocalServer != null) return;
+
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
             {
@@ -297,7 +297,10 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
-            // All clients (and host) run this after the initiating client syncs it.
+            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
+            Log.Message($"[{side}-SYNC] TakeOrderedJob called for {pawn?.LabelShortCap}.");
+
+            // This one should run everywhere
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
             {
@@ -308,7 +311,9 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            // Client receives path from host.
+            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
+            Log.Message($"[{side}-SYNC] SetPawnPath called for {pawn?.LabelShortCap}.");
+
             if (Multiplayer.LocalServer != null) return;
             if (pawn == null || pawn.pather == null) return;
             var pather = pawn.pather;
