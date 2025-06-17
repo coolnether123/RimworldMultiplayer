@@ -54,44 +54,32 @@ namespace Multiplayer.Client
     {
         private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
-        private static Job markedJobForSync;
 
-        // CHECKPOINT 1: Intercepting an AI Job
-        public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
+        // This patch now ONLY has one job: stop clients from starting AI jobs.
+        public static bool Prefix_StartJob(ThinkNode jobGiver)
         {
-            if (Multiplayer.Client == null) return true;
-
-            // Block job churn
-            if (__instance.curJob != null && jobGiver != null && newJob.JobIsSameAs(__instance.pawn, __instance.curJob))
+            if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
+                // We are a client, and this is an AI job. Block it.
                 return false;
             }
-
-            if (Multiplayer.LocalServer == null && jobGiver != null)
-            {
-                // A client should not start an AI job.
-                return false;
-            }
-
-            // Host will run the original StartJob. We will sync it in the Postfix.
-            // We mark the job we intend to sync.
-            if (Multiplayer.LocalServer != null && jobGiver != null)
-            {
-                markedJobForSync = newJob;
-            }
-
+            // Host runs everything. Player-ordered jobs run everywhere (but are synced separately).
             return true;
         }
 
-        public static void Postfix_StartJob(Pawn_JobTracker __instance)
+        public static void Postfix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
-            // If we marked a job to be synced, and the pawn's current job is that job, then sync it.
-            if (markedJobForSync != null && __instance.curJob == markedJobForSync)
+            // Only the host syncs jobs.
+            if (Multiplayer.LocalServer == null) return;
+
+            // Only sync AI-driven jobs. Player orders are synced elsewhere.
+            if (jobGiver == null) return;
+
+            // If the job started successfully, curJob will be valid.
+            if (__instance.curJob != null)
             {
-                Log.Message($"[Pathing-Checkpoint 1A - HOST] AI job {__instance.curJob.def.defName} for {__instance.pawn.LabelShortCap} started successfully. Syncing.");
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
             }
-            markedJobForSync = null; // Clear the marker
         }
 
         // CHECKPOINT 2: Intercepting a Player-Ordered Job
@@ -325,24 +313,38 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void StartJobAI(Pawn pawn, JobParams jobParams)
         {
+            // When a client receives this, it should start the job.
+            // But only if it's NOT the host, to avoid duplication.
+            if (Multiplayer.LocalServer != null) return;
+
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
+            {
                 pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, resumeCurJobAfterwards: false, cancelBusyStances: true, thinkTree: job.jobGiverThinkTree);
+            }
         }
 
         [SyncMethod]
         public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
         {
+            // The host receives the request from a client, and then broadcasts it back to ALL clients (including the original sender).
+            // This ensures everyone is in sync.
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
+            {
                 pawn.jobs.TryTakeOrderedJob(job, tag);
+            }
         }
 
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
+            // Only clients should process this.
             if (Multiplayer.LocalServer == null)
-                PathingClientUtil.SetPawnPath(pawn, surrogate, isLocal: false);
+            {
+                // We don't need the isLocal parameter anymore, the Host/Client distinction is enough.
+                PathingClientUtil.SetPawnPath(pawn, surrogate);
+            }
         }
     }
 }
