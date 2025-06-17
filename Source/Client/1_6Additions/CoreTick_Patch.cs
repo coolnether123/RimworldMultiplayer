@@ -3,7 +3,6 @@ using HarmonyLib;
 using RimWorld;
 using Verse;
 using Verse.AI;
-using static Verse.AI.ThingCountTracker;
 
 namespace Multiplayer.Client.Patches
 {
@@ -12,26 +11,56 @@ namespace Multiplayer.Client.Patches
     {
         static void Postfix()
         {
-            // Only run on host
             if (Multiplayer.Client == null || Multiplayer.LocalServer == null)
                 return;
 
-            Log.Message("[CoreTick_Patch] Postfix running - forcing AI tick");
-
-            int pawnCount = 0; 
-
-            // Force AI thinking on all pawns
-            foreach (var map in Find.Maps)
+            // Only log this every 2 seconds to avoid spam
+            if (Find.TickManager.TicksGame % 120 == 0)
             {
-                foreach (var pawn in map.mapPawns.AllPawns)
-                {
-                    if (pawn.needs == null || pawn.jobs == null || !pawn.mindState.Active)
-                        continue;
+                int pawnCount = 0;
+                int tickedCount = 0;
 
-                    pawn.jobs.JobTrackerTickInterval(1);
+                foreach (var map in Find.Maps)
+                {
+                    if (map.mapPawns == null) continue;
+
+                    foreach (var pawn in map.mapPawns.AllPawns)
+                    {
+                        pawnCount++;
+
+                        if (pawn.needs == null)
+                        {
+                            // This can happen for mechs or other special pawns
+                            // Log.Message($"[CoreTick_Patch] Skipping {pawn.LabelShortCap}: No needs component.");
+                            continue;
+                        }
+                        if (pawn.jobs == null)
+                        {
+                            // Should be very rare
+                            Log.Message($"[CoreTick_Patch] Skipping {pawn.LabelShortCap}: No jobs component.");
+                            continue;
+                        }
+                        if (pawn.mindState == null || !pawn.mindState.Active)
+                        {
+                            // This is a common reason. Downed, deathresting, mental break, etc.
+                            // Log.Message($"[CoreTick_Patch] Skipping {pawn.LabelShortCap}: MindState is not active.");
+                            continue;
+                        }
+                        if (pawn.Dead || !pawn.Spawned)
+                        {
+                            // Basic safety checks
+                            continue;
+                        }
+
+                        // If we passed all checks, tick the job tracker.
+                        pawn.jobs.JobTrackerTickInterval(1);
+                        tickedCount++;
+                    }
                 }
+
+                // Summary log
+                Log.Message($"[CoreTick_Patch] AI Tick Fired. Total Pawns: {pawnCount}. Ticked AI for: {tickedCount} pawns.");
             }
-            Log.Message($"[CoreTick_Patch] Forced AI tick on {pawnCount} pawns");
         }
     }
 }

@@ -135,11 +135,10 @@ namespace Multiplayer.Common
 
             Packets packetType = (Packets)msgId;
 
-            // NEW CHECKPOINT C
-            // Let's see which handler we are about to use.
-            Verse.Log.Message($"[CLIENT-NET-TRACE] HandleReceiveMsg for packet: {packetType}. Current state: {State}");
-
-            ServerLog.Verbose($"Received packet {this}: {packetType}");
+            if (packetType != Packets.Client_FrameTime && packetType != Packets.Client_Cursor && packetType != Packets.Server_Cursor)
+            {
+                //Verse.Log.Message($"[CLIENT-NET-TRACE] HandleReceiveMsg for packet: {packetType}. Current state: {State}");
+            }
 
             var handler = StateObj?.GetPacketHandler(packetType) ?? MpConnectionState.packetHandlers[(int)State, (int)packetType];
             if (handler == null)
