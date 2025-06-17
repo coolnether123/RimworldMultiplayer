@@ -56,12 +56,13 @@ namespace Multiplayer.Client
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
 
         // This patch now ONLY has one job: stop clients from starting AI jobs.
-        public static bool Prefix_StartJob(ThinkNode jobGiver)
+        public static bool Prefix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
 
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
                 // We are a client, and this is an AI job. Block it.
+                MpTrace.Verbose($"Blocking AI jobgiver {jobGiver.GetType().Name} for {__instance.pawn.LabelShortCap}.");
                 return false;
             }
             // Host runs everything. Player-ordered jobs run everywhere (but are synced separately).
@@ -72,6 +73,7 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.LocalServer != null && jobGiver != null && __instance.curJob != null)
             {
+                MpTrace.Verbose($"Host detected new AI job ({__instance.curJob.def.defName}) for {__instance.pawn.LabelShortCap}. Sending sync.");
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
             }
         }
@@ -84,6 +86,7 @@ namespace Multiplayer.Client
             return false;
         }
 
+        // CHECKPOINT 3: Detecting a New Path on Host
         // CHECKPOINT 3: Detecting a New Path on Host
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
@@ -98,6 +101,7 @@ namespace Multiplayer.Client
                 lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
                 {
+                    MpTrace.Verbose($"Host detected new path for {pawn.LabelShortCap} (Valid: {newSurrogate.isValid}, Nodes: {newSurrogate.NodeCount}). Sending sync.");
                     SyncedActions.SetPawnPath(pawn, newSurrogate);
                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
                 }
@@ -282,10 +286,9 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void StartJobAI(Pawn pawn, JobParams jobParams)
         {
-            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
-            Log.Message($"[{side}-SYNC] StartJobAI called for {pawn?.LabelShortCap}.");
+            MpTrace.Info($"Executing synced AI job ({jobParams.def.defName}) for {pawn?.LabelShortCap}.");
 
-            if (Multiplayer.LocalServer != null) return;
+            if (Multiplayer.LocalServer != null) return; // Host only sends, doesn't execute this part
 
             Job job = jobParams.ToJob();
             using (new Multiplayer.DontSync())
@@ -311,17 +314,27 @@ namespace Multiplayer.Client
         [SyncMethod]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
         {
-            string side = Multiplayer.LocalServer != null ? "HOST" : "CLIENT";
-            Log.Message($"[{side}-SYNC] SetPawnPath called for {pawn?.LabelShortCap}.");
+            MpTrace.Info($"Applying synced path to {pawn?.LabelShortCap}. (Valid: {surrogate.isValid}, Nodes: {surrogate.NodeCount})");
 
-            if (Multiplayer.LocalServer != null) return;
+            if (Multiplayer.LocalServer != null) return; // Host only sends
             if (pawn == null || pawn.pather == null) return;
+
             var pather = pawn.pather;
             PawnPath newPath = surrogate.ToPawnPath(pawn);
+
             pather.curPath?.ReleaseToPool();
             pather.curPath = newPath;
-            if (newPath.Found) pather.ResetToCurrentPosition();
-            else pather.PatherFailed();
+
+            if (newPath.Found)
+            {
+                // This call is important. When a pather gets a new path, it needs to be reset
+                // to its current position to start following it correctly.
+                pather.ResetToCurrentPosition();
+            }
+            else
+            {
+                pather.PatherFailed();
+            }
         }
     }
 }

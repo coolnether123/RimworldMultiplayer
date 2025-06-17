@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Multiplayer.Client.Util;
@@ -91,6 +91,9 @@ public static class MpSettingsUI
             listing.CheckboxLabeled("Show debug info", ref settings.showDevInfo);
             listing.TextFieldNumericLabeled("Desync radius:  ", ref settings.desyncTracesRadius, ref desyncRadiusBuffer, 1f,
                 200f);
+
+            // Added for 1.6 Debugging
+            listing.CheckboxLabeled("Enable sync tracing (dev)", ref settings.syncTracing, "Enables verbose logging for pathfinding and job synchronization. Can cause performance issues and log spam.");
 
 #if DEBUG
             using (MpStyle.Set(TextAnchor.MiddleCenter))

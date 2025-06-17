@@ -9,6 +9,10 @@ namespace Multiplayer.Client
 {
     public class MpSettings : ModSettings
     {
+        // 1.6 Debugging
+        public bool syncTracing = false;
+
+
         public string username;
         public bool showCursors = true;
         public bool autoAcceptSteam;
@@ -66,6 +70,9 @@ namespace Multiplayer.Client
             Scribe_Values.Look(ref showMainMenuAnim, "showMainMenuAnim", true);
             Scribe_Values.Look(ref appendNameToAutosave, "appendNameToAutosave");
             Scribe_Values.Look(ref transparentPlayerCursors, "transparentPlayerCursors", true);
+
+            // Added for 1.6 Debugging
+            Scribe_Values.Look(ref syncTracing, "syncTracing", false);
 
             Scribe_Collections.Look(ref playerColors, "playerColors", LookMode.Deep);
             if (playerColors.NullOrEmpty())
