@@ -51,22 +51,35 @@ namespace Multiplayer.Client
 
         public static void HandleReceive(ByteReader data, bool reliable)
         {
-            // NEW CHECKPOINT: This is the very first point of entry for a received packet on the client.
-            Log.Message($"[CLIENT-NET] HandleReceive called. Packet size: {data.Length}. Reliable: {reliable}.");
-            try
-            {
-                Multiplayer.Client.HandleReceiveRaw(data, reliable);
-            }
-            catch (Exception e)
-            {
-                Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
+            // We must queue the packet processing to happen on the main thread in the correct order.
+            var dataBytes = data.ReadRaw(data.Length);
 
-                Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
+            // CHECKPOINT X1: Confirming the packet is being queued from the network thread.
+            if (Multiplayer.Client != null)
+                Log.Message($"[CLIENT-NET] Queuing packet. Size: {dataBytes.Length}, Reliable: {reliable}");
 
-                ConnectionStatusListeners.TryNotifyAll_Disconnected();
-                Multiplayer.StopMultiplayer();
-            }
+            OnMainThread.Enqueue(() =>
+            {
+                if (Multiplayer.Client == null)
+                {
+                    Log.Warning("[CLIENT-NET] Process queue: Multiplayer.Client is null, dropping packet.");
+                    return;
+                }
+
+                try
+                {
+                    // CHECKPOINT X2: Confirming the queued action is being executed on the main game thread.
+                    Log.Message($"[CLIENT-NET] Dequeued and processing packet. Size: {dataBytes.Length}");
+                    Multiplayer.Client.HandleReceiveRaw(new ByteReader(dataBytes), reliable);
+                }
+                catch (Exception e)
+                {
+                    Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
+                    Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
+                    ConnectionStatusListeners.TryNotifyAll_Disconnected();
+                    Multiplayer.StopMultiplayer();
+                }
+            });
         }
     }
-
 }
