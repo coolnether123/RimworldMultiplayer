@@ -231,9 +231,7 @@ namespace Multiplayer.Client
 
             while (Simulating ? (Timer < simulating.target && updateTimer.ElapsedMilliseconds < 25) : (ticksToRun > 0))
             {
-                // Re-check commands inside the loop in case a tick produces a command for the current tick (e.g., quests)
-                if (RunCmds()) return;
-
+                // Inside the loop, we only need to DoTick. RunCmds is already handled.
                 if (DoTick(ref worked)) return;
             }
         }
@@ -249,13 +247,9 @@ namespace Multiplayer.Client
 
         public static bool DoTick(ref bool worked)
         {
-
-            //MpTrace.Info($"-- DoTick START for Timer: {Timer} --");
-
             tickTimer.Restart();
 
-            // First, process commands for the current tick for ALL tickables.
-            if (RunCmds()) return true;
+            // The RunCmds() call is removed from here as it's now handled in DoUpdate.
 
             // Now, tick the simulation for any unpaused tickables.
             foreach (ITickable tickable in AllTickables)
@@ -269,30 +263,9 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
-            if (Multiplayer.Client != null && Find.CurrentMap != null)
-            {
-                List<Map> maps = Find.Maps;
-                for (int i = 0; i < maps.Count; i++)
-                {
-                    Map map = maps[i];
-                    // Only tick pathers on maps that are not being viewed.
-                    // The main game loop handles the current map.
-                    if (map != Find.CurrentMap)
-                    {
-                        // Use a temporary list to prevent collection modification errors.
-                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
-                        foreach (Pawn pawn in pawnsOnMap)
-                        {
-                            if (pawn.pather != null)
-                            {
-                                // This specific call updates the pawn's visual position.
-                                // It does NOT run AI logic and is safe to call.
-                                pawn.pather.PatherTick();
-                            }
-                        }
-                    }
-                }
-            }
+            // The visual update logic for non-active maps is also removed.
+            // The main TickTickable loop should handle this correctly now that commands are processed.
+            // If it doesn't, we will re-evaluate, but for now, simplicity is key.
 
             Timer++;
             ticksToRun--;

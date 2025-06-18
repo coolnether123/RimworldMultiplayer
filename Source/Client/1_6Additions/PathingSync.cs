@@ -101,6 +101,9 @@ namespace Multiplayer.Client
         // CHECKPOINT 3: Detecting a New Path on Host
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
+            // Throttle the check to run only once every 30 ticks for performance and to reduce log spam.
+            if (Find.TickManager.TicksGame % 30 != 0) return;
+
             if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
             Pawn pawn = __instance.pawn;
