@@ -257,26 +257,25 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
-            // Refined block for visual updates on non-active maps
+            // This logic runs for ALL players (host and client) to ensure visual symmetry.
+            // It manually ticks the PathFollower for pawns on non-active maps.
+            // This is essential for updating their visual position and making them move.
+            // This does NOT run AI logic, only movement execution.
             if (Multiplayer.Client != null && Find.CurrentMap != null)
             {
                 List<Map> maps = Find.Maps;
                 for (int i = 0; i < maps.Count; i++)
                 {
                     Map map = maps[i];
-                    if (map != Find.CurrentMap)
+                    if (map != Find.CurrentMap) // Only for non-viewed maps
                     {
-                        var asyncTime = map.AsyncTime();
-                        // Only run this for PAUSED maps, as unpaused maps are already handled by the main loop.
-                        if (asyncTime != null && asyncTime.TimePerTick(asyncTime.DesiredTimeSpeed) == 0)
+                        // Use a temporary list to avoid modification-during-enumeration errors.
+                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
+                        foreach (Pawn pawn in pawnsOnMap)
                         {
-                            List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
-                            foreach (Pawn pawn in pawnsOnMap)
+                            if (pawn.pather != null)
                             {
-                                if (pawn != null && pawn.Spawned && pawn.pather != null)
-                                {
-                                    pawn.pather.PatherTick();
-                                }
+                                pawn.pather.PatherTick();
                             }
                         }
                     }
