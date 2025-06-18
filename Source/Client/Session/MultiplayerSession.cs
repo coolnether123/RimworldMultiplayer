@@ -16,8 +16,7 @@ namespace Multiplayer.Client
 {
     public class MultiplayerSession : IConnectionStatusListener
     {
-        public Dictionary<int, List<ScheduledCommand>> bufferedCommands = new Dictionary<int, List<ScheduledCommand>>();
-
+        public Dictionary<int, List<ScheduledCommand>> bufferedCommands = new();
 
         public string gameName;
         public int playerId;
@@ -229,6 +228,7 @@ namespace Multiplayer.Client
             if (cmd.mapId == ScheduledCommand.Global)
             {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
+                MpTrace.Info("--> Queued GLOBAL command.");
             }
             else
             {
@@ -238,11 +238,12 @@ namespace Multiplayer.Client
                 if (map != null && asyncTime != null)
                 {
                     asyncTime.cmds.Enqueue(cmd);
+                    MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
                 }
                 else
                 {
-                    // Map isn't ready, so buffer the command.
-                    MpTrace.Warning($"Map {cmd.mapId} not ready, buffering command {cmd.type}.");
+                    // Instead of dropping, we buffer the command.
+                    MpTrace.Warning($"--> Map {cmd.mapId} not ready. Buffering command {cmd.type}.");
                     bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
                 }
             }

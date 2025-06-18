@@ -45,17 +45,16 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            ScheduledCommand cmd = null;
             try
             {
-                // Log BEFORE deserialization
-                //MpTrace.Info($"HandleCommand: Received Server_Command packet. Preparing to deserialize.");
+                // We keep this log to see if we even enter the method
+                MpTrace.Info("HandleCommand (ClientPlayingState): Received Server_Command packet.");
 
-                cmd = ScheduledCommand.Deserialize(data);
+                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
                 cmd.issuedBySelf = data.ReadBool();
 
-                // Log AFTER successful deserialization
-                //MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
+                // This log will only print if deserialization succeeds
+                MpTrace.Info($"--> HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}.");
 
                 Session.ScheduleCommand(cmd);
 
@@ -64,7 +63,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-   
+                // This is the most important log. If it appears, we've found the bug.
                 MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
             }
         }

@@ -257,30 +257,6 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
-            // This logic runs for ALL players (host and client) to ensure visual symmetry.
-            // It manually ticks the PathFollower for pawns on non-active maps.
-            // This is essential for updating their visual position and making them move.
-            // This does NOT run AI logic, only movement execution.
-            if (Multiplayer.Client != null && Find.CurrentMap != null)
-            {
-                List<Map> maps = Find.Maps;
-                for (int i = 0; i < maps.Count; i++)
-                {
-                    Map map = maps[i];
-                    if (map != Find.CurrentMap) // Only for non-viewed maps
-                    {
-                        // Use a temporary list to avoid modification-during-enumeration errors.
-                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
-                        foreach (Pawn pawn in pawnsOnMap)
-                        {
-                            if (pawn.pather != null)
-                            {
-                                pawn.pather.PatherTick();
-                            }
-                        }
-                    }
-                }
-            }
 
             Timer++;
             ticksToRun--;
