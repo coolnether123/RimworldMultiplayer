@@ -45,26 +45,30 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
+            // Store the raw data before trying to read it.
+            byte[] rawData = data.ReadRaw(data.Length);
+            ScheduledCommand cmd = null;
+
             try
             {
-                // We keep this log to see if we even enter the method
-                MpTrace.Info("HandleCommand (ClientPlayingState): Received Server_Command packet.");
+                // Use a new reader with the stored raw data.
+                var reader = new ByteReader(rawData);
 
-                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
-                cmd.issuedBySelf = data.ReadBool();
+                // This is where we expect the failure might be happening.
+                cmd = ScheduledCommand.Deserialize(reader);
+                cmd.issuedBySelf = reader.ReadBool();
 
-                // This log will only print if deserialization succeeds
-                MpTrace.Info($"--> HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}.");
+                // If we reach here, deserialization was successful.
+                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Tick: {cmd.ticks}.");
 
                 Session.ScheduleCommand(cmd);
-
                 Multiplayer.session.receivedCmds++;
                 Multiplayer.session.ProcessTimeControl();
             }
             catch (Exception e)
             {
-                // This is the most important log. If it appears, we've found the bug.
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
+                // This log will now capture the exact error and the data that caused it.
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. The command will be dropped. Exception: {e}\nRaw Data ({rawData.Length} bytes): {System.BitConverter.ToString(rawData).Replace("-", " ")}");
             }
         }
 

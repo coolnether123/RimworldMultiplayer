@@ -216,8 +216,7 @@ namespace Multiplayer.Client
 
         public void ExecuteCmd(ScheduledCommand cmd)
         {
-            // === STEP 5: LOG COMMAND EXECUTION START ===
-            MpTrace.Info($"ExecuteCmd (AsyncTimeComp): START executing command {cmd.type} for map {map.uniqueID} at tick {mapTicks}.");
+            MpTrace.Info($"ExecuteCmd: Attempting to execute command {cmd.type} for map {map.uniqueID} at tick {mapTicks}.");
 
             CommandType cmdType = cmd.type;
             LoggingByteReader data = new LoggingByteReader(cmd.data);
