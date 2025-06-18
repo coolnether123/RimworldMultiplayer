@@ -63,7 +63,7 @@ namespace Multiplayer.Client
         private static void ProcessPacket(byte[] data, bool reliable)
         {
             // === STEP 1: LOG ARRIVAL ON MAIN THREAD ===
-            MpTrace.Info("ProcessPacket: Packet has arrived on the main thread. About to process.");
+            //MpTrace.Info("ProcessPacket: Packet has arrived on the main thread. About to process.");
 
             if (Multiplayer.Client == null)
             {
@@ -75,7 +75,7 @@ namespace Multiplayer.Client
             {
                 Multiplayer.Client.HandleReceiveRaw(new ByteReader(data), reliable);
                 // === STEP 2: LOG SUCCESSFUL PROCESSING ===
-                MpTrace.Info("ProcessPacket: HandleReceiveRaw completed without error.");
+                //MpTrace.Info("ProcessPacket: HandleReceiveRaw completed without error.");
             }
             catch (Exception e)
             {

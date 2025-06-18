@@ -64,8 +64,7 @@ namespace Multiplayer.Client
             if (MpVersion.IsDebug)
                 SimpleProfiler.Start();
 
-            // This sequence is now the single source of truth for running a game update.
-            RunCmds();
+            
             if (LongEventHandler.eventQueue.Count == 0)
             {
                 DoUpdate(out var worked);
@@ -224,10 +223,10 @@ namespace Multiplayer.Client
             worked = false;
             updateTimer.Restart();
 
+            if (RunCmds()) return;
+
             while (Simulating ? (Timer < simulating.target && updateTimer.ElapsedMilliseconds < 25) : (ticksToRun > 0))
             {
-                if (RunCmds())
-                    return;
                 if (DoTick(ref worked))
                     return;
             }
@@ -254,7 +253,7 @@ namespace Multiplayer.Client
 
                 worked = true;
                 TickTickable(tickable);
-            }
+            }   
 
             ConstantTicker.Tick();
 
