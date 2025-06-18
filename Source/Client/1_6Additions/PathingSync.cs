@@ -53,6 +53,7 @@ namespace Multiplayer.Client
     public static class PathingPatches
     {
         public static bool IsExecutingSyncCommand = false;
+        public static int InSyncAction = 0; // Use an int counter, not a bool
 
         private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
         private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
@@ -61,6 +62,13 @@ namespace Multiplayer.Client
         public static bool Prefix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
         {
             if (IsExecutingSyncCommand) return true;
+
+            if (PathingPatches.InSyncAction > 0)
+            {
+                // This log is now the most important one. If we see this, we are on the right track.
+                MpTrace.Info($"Allowing job ({__instance.pawn.CurJob?.def.defName}) for {__instance.pawn.LabelShortCap} because InSyncAction > 0.");
+                return true;
+            }
 
             if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
             {
@@ -137,16 +145,16 @@ namespace Multiplayer.Client
         public List<LocalTargetInfo> targetQueueA;
         public List<LocalTargetInfo> targetQueueB;
         public int count = -1;
-        public bool playerForced;
-        public bool canBashDoors;
-        public bool canBashFences;
-        public HaulMode haulMode;
-        public Faction lordFaction;
-        public int takeExtraIngestibles;
-        private ThinkTreeDef thinkTreeDef;
-        private int jobGiverKey;
-        private Thing verbCaster;
-        private string verbLabel;
+        // public bool playerForced; // Temporarily disable
+        // public bool canBashDoors; // Temporarily disable
+        // public bool canBashFences; // Temporarily disable
+        // public HaulMode haulMode; // Temporarily disable
+        // public Faction lordFaction; // Temporarily disable
+        // public int takeExtraIngestibles; // Temporarily disable
+        // private ThinkTreeDef thinkTreeDef; // DEFINITELY disable this
+        // private int jobGiverKey; // DEFINITELY disable this
+        // private Thing verbCaster; // DEFINITELY disable this
+        // private string verbLabel; // DEFINITELY disable this
 
         public JobParams() { }
 
@@ -159,19 +167,19 @@ namespace Multiplayer.Client
             targetQueueA = job.targetQueueA?.ToList();
             targetQueueB = job.targetQueueB?.ToList();
             count = job.count;
-            playerForced = job.playerForced;
-            canBashDoors = job.canBashDoors;
-            canBashFences = job.canBashFences;
-            haulMode = job.haulMode;
-            lordFaction = job.lord?.faction;
-            takeExtraIngestibles = job.takeExtraIngestibles;
-            thinkTreeDef = job.jobGiverThinkTree;
-            jobGiverKey = job.jobGiver?.UniqueSaveKey ?? -1;
-            if (job.verbToUse != null)
-            {
-                verbCaster = job.verbToUse.Caster;
-                verbLabel = job.verbToUse.verbProps.label;
-            }
+            // playerForced = job.playerForced;
+            // canBashDoors = job.canBashDoors;
+            // canBashFences = job.canBashFences;
+            // haulMode = job.haulMode;
+            // lordFaction = job.lord?.faction;
+            // takeExtraIngestibles = job.takeExtraIngestibles;
+            // thinkTreeDef = job.jobGiverThinkTree;
+            // jobGiverKey = job.jobGiver?.UniqueSaveKey ?? -1;
+            // if (job.verbToUse != null)
+            // {
+            //     verbCaster = job.verbToUse.Caster;
+            //     verbLabel = job.verbToUse.verbProps.label;
+            // }
         }
 
         public Job ToJob()
@@ -183,20 +191,22 @@ namespace Multiplayer.Client
             job.targetQueueA = targetQueueA;
             job.targetQueueB = targetQueueB;
             job.count = count;
-            job.playerForced = playerForced;
-            job.canBashDoors = canBashDoors;
-            job.canBashFences = canBashFences;
-            job.haulMode = haulMode;
-            job.takeExtraIngestibles = takeExtraIngestibles;
-            if (thinkTreeDef != null && jobGiverKey != -1 && thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out ThinkNode node))
-            {
-                job.jobGiver = node;
-                job.jobGiverThinkTree = thinkTreeDef;
-            }
-            if (verbCaster != null && !verbLabel.NullOrEmpty() && verbCaster is IVerbOwner owner)
-            {
-                job.verbToUse = owner.VerbTracker?.AllVerbs.FirstOrDefault(v => v.verbProps.label == verbLabel);
-            }
+            // job.playerForced = playerForced;
+            // job.canBashDoors = canBashDoors;
+            // job.canBashFences = canBashFences;
+            // job.haulMode = haulMode;
+            // job.takeExtraIngestibles = takeExtraIngestibles;
+
+            // The following logic is disabled for this test.
+            // if (thinkTreeDef != null && jobGiverKey != -1 && thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out ThinkNode node))
+            // {
+            //     job.jobGiver = node;
+            //     job.jobGiverThinkTree = thinkTreeDef;
+            // }
+            // if (verbCaster != null && !verbLabel.NullOrEmpty() && verbCaster is IVerbOwner owner)
+            // {
+            //     job.verbToUse = owner.VerbTracker?.AllVerbs.FirstOrDefault(v => v.verbProps.label == verbLabel);
+            // }
             return job;
         }
 
@@ -209,16 +219,16 @@ namespace Multiplayer.Client
             worker.Bind(ref targetQueueA);
             worker.Bind(ref targetQueueB);
             worker.Bind(ref count);
-            worker.Bind(ref playerForced);
-            worker.Bind(ref canBashDoors);
-            worker.Bind(ref canBashFences);
-            worker.Bind(ref haulMode);
-            worker.Bind(ref lordFaction);
-            worker.Bind(ref takeExtraIngestibles);
-            worker.Bind(ref thinkTreeDef);
-            worker.Bind(ref jobGiverKey);
-            worker.Bind(ref verbCaster);
-            worker.Bind(ref verbLabel);
+            // worker.Bind(ref playerForced);
+            // worker.Bind(ref canBashDoors);
+            // worker.Bind(ref canBashFences);
+            // worker.Bind(ref haulMode);
+            // worker.Bind(ref lordFaction);
+            // worker.Bind(ref takeExtraIngestibles);
+            // worker.Bind(ref thinkTreeDef);
+            // worker.Bind(ref jobGiverKey);
+            // worker.Bind(ref verbCaster);
+            // worker.Bind(ref verbLabel);
         }
     }
 
@@ -296,6 +306,7 @@ namespace Multiplayer.Client
             // vvv WRAP THE LOGIC IN TRY/FINALLY vvv
             try
             {
+                PathingPatches.InSyncAction++;
                 PathingPatches.IsExecutingSyncCommand = true;
                 Job job = jobParams.ToJob();
                 using (new Multiplayer.DontSync())
@@ -305,6 +316,7 @@ namespace Multiplayer.Client
             }
             finally
             {
+                PathingPatches.InSyncAction--;
                 PathingPatches.IsExecutingSyncCommand = false;
             }
             // ^^^ WRAP THE LOGIC IN TRY/FINALLY ^^^
