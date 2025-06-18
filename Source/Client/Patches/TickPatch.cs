@@ -241,20 +241,26 @@ namespace Multiplayer.Client
         public static bool DoTick(ref bool worked)
         {
             tickTimer.Restart();
-            worked = true; // A tick is always considered work
 
-            // Tick the simulation for all tickable components
+            // First, process commands for the current tick for ALL tickables.
+            // This is crucial and must happen before the timer increments.
+            if (RunCmds()) return true;
+
+            // Now, tick the simulation for any unpaused tickables.
             foreach (ITickable tickable in AllTickables)
             {
-                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) > 0)
+                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) > 0) // Only tick if not paused
                 {
+                    worked = true;
                     TickTickable(tickable);
                 }
             }
 
             ConstantTicker.Tick();
+
             Timer++;
             ticksToRun--;
+
             tickTimer.Stop();
 
             if (Multiplayer.session.desynced || Timer >= tickUntil || LongEventHandler.eventQueue.Count > 0)
