@@ -254,7 +254,7 @@ namespace Multiplayer.Client
         public static bool DoTick(ref bool worked)
         {
 
-            MpTrace.Info($"-- DoTick START for Timer: {Timer} --");
+            //MpTrace.Info($"-- DoTick START for Timer: {Timer} --");
 
             tickTimer.Restart();
 
