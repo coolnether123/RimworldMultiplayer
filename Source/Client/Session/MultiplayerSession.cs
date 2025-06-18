@@ -16,8 +16,8 @@ namespace Multiplayer.Client
 {
     public class MultiplayerSession : IConnectionStatusListener
     {
-
         public Dictionary<int, List<ScheduledCommand>> bufferedCommands = new Dictionary<int, List<ScheduledCommand>>();
+
 
         public string gameName;
         public int playerId;
@@ -221,6 +221,7 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
+            // This initial log is important to see that the method is being called for Sync commands.
             MpTrace.Info($"ScheduleCommand (MultiplayerSession): Received command {cmd.type} for tick {cmd.ticks} targeting mapId {cmd.mapId}.");
 
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);

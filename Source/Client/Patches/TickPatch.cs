@@ -102,6 +102,7 @@ namespace Multiplayer.Client
                 // Reset the tick controller to a clean state.
                 TickPatch.Reset();
             }
+            TryProcessBufferedCommands();
 
             if (!ShouldHandle) return false;
             if (Frozen) return false;
@@ -302,6 +303,38 @@ namespace Multiplayer.Client
                     else if (tickable is AsyncTimeComp)
                         AsyncTimeComp.tickingMap = null;
                 }
+            }
+        }
+
+        private static void TryProcessBufferedCommands()
+        {
+            var session = Multiplayer.session;
+            if (session.bufferedCommands.Count == 0) return;
+
+            // Use a temporary list to avoid modifying the collection while iterating
+            List<int> processedMapIds = new List<int>();
+
+            foreach (var entry in session.bufferedCommands)
+            {
+                int mapId = entry.Key;
+                Map map = Find.Maps.FirstOrDefault(m => m.uniqueID == mapId);
+
+                if (map != null && map.AsyncTime() != null)
+                {
+                    MpTrace.Info($"Map {mapId} is now available. Processing {entry.Value.Count} buffered commands.");
+                    var mapQueue = map.AsyncTime().cmds;
+                    foreach (var cmd in entry.Value)
+                    {
+                        mapQueue.Enqueue(cmd);
+                    }
+                    processedMapIds.Add(mapId);
+                }
+            }
+
+            // Remove the processed commands from the buffer
+            foreach (int mapId in processedMapIds)
+            {
+                session.bufferedCommands.Remove(mapId);
             }
         }
 
