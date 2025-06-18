@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Multiplayer.Common
@@ -39,6 +39,8 @@ namespace Multiplayer.Common
             writer.WriteInt32(cmd.playerId);
             writer.WritePrefixedBytes(cmd.data);
 
+            writer.WriteBool(cmd.issuedBySelf);
+
             return writer.ToArray();
         }
 
@@ -51,7 +53,13 @@ namespace Multiplayer.Common
             int playerId = data.ReadInt32();
             byte[] extraBytes = data.ReadPrefixedBytes()!;
 
-            return new ScheduledCommand(cmd, ticks, factionId, mapId, playerId, extraBytes);
+            // Read the flag from the stream as part of deserialization.
+            bool bySelf = data.ReadBool();
+
+            var newCmd = new ScheduledCommand(cmd, ticks, factionId, mapId, playerId, extraBytes);
+            newCmd.issuedBySelf = bySelf;
+
+            return newCmd;
         }
 
         public override string ToString()

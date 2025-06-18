@@ -18,7 +18,9 @@ namespace Multiplayer.Common
         public void Send(CommandType cmd, int factionId, int mapId, byte[] data, ServerPlayer? sourcePlayer = null, ServerPlayer? fauxSource = null)
         {
             // We are looking for CommandType.Sync, which is used for [SyncMethod] calls.
+            // This log can be changed to MpTrace.Verbose once we confirm things are working.
             Log.Message($"[SERVER-COMMANDHANDLER] Send called. CommandType: {cmd}, MapID: {mapId}, Data Length: {data.Length}");
+
             // policy
             if (sourcePlayer != null)
             {
@@ -37,33 +39,39 @@ namespace Multiplayer.Common
                     return;
             }
 
-            byte[] toSave = ScheduledCommand.Serialize(
-                new ScheduledCommand(
-                    cmd,
-                    server.gameTimer,
-                    factionId,
-                    mapId,
-                    sourcePlayer?.id ?? fauxSource?.id ?? ScheduledCommand.NoPlayer,
-                    data));
+            // Create a base command object to be saved to the world data.
+            // For saving purposes, issuedBySelf can be considered false.
+            var commandToSave = new ScheduledCommand(
+                cmd,
+                server.gameTimer,
+                factionId,
+                mapId,
+                sourcePlayer?.id ?? fauxSource?.id ?? ScheduledCommand.NoPlayer,
+                data
+            )
+            { issuedBySelf = false }; // Explicitly false for the saved version.
 
+            // Serialize it once for saving.
+            byte[] serializedCommandToSave = ScheduledCommand.Serialize(commandToSave);
+
+            // Save the command to the world data and temporary command list.
             // todo cull target players if not global
-            server.worldData.mapCmds.GetOrAddNew(mapId).Add(toSave);
-            server.worldData.tmpMapCmds?.GetOrAddNew(mapId).Add(toSave);
+            server.worldData.mapCmds.GetOrAddNew(mapId).Add(serializedCommandToSave);
+            server.worldData.tmpMapCmds?.GetOrAddNew(mapId).Add(serializedCommandToSave);
 
-            byte[] toSend = toSave.Append(new byte[] { 0 });
-            byte[] toSendSource = toSave.Append(new byte[] { 1 });
-
-            // === NEW CHECKPOINT - Who are we sending it to? ===
-            int playingPlayerCount = 0;
-            foreach (var player in server.PlayingPlayers)
+            // Now, loop through players to send the network packet.
+            foreach (ServerPlayer player in server.PlayingPlayers)
             {
-                playingPlayerCount++;
-                player.conn.Send(
-                    Packets.Server_Command,
-                    sourcePlayer == player ? toSendSource : toSend
-                );
+                // We reuse the commandToSave object and just modify the one flag that changes per player.
+                // This is slightly more efficient than creating a new object every time.
+                commandToSave.issuedBySelf = (sourcePlayer == player);
+
+                // Serialize the command with the correct flag for this specific player.
+                byte[] packetData = ScheduledCommand.Serialize(commandToSave);
+
+                // Send the personalized packet.
+                player.conn.Send(Packets.Server_Command, packetData);
             }
-            Verse.Log.Message($"[SERVER-COMMANDHANDLER] Packet broadcast to {playingPlayerCount} playing players.");
 
             SentCmds++;
         }

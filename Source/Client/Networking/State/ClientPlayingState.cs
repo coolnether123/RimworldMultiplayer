@@ -45,29 +45,12 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            ScheduledCommand cmd = null;
-
-            // We log *before* touching the reader to see if we get here.
-            MpTrace.Info("HandleCommand: Entered method.");
-
             try
             {
-                // This is the only line that can be failing.
-                cmd = ScheduledCommand.Deserialize(data);
-            }
-            catch (Exception e)
-            {
-                // If this log appears, we have found the exact point of failure.
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during ScheduledCommand.Deserialize. Exception: {e}");
-                return; // Abort on failure.
-            }
+                // Now we only need to deserialize. The issuedBySelf flag is handled internally.
+                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
 
-            // If the above code succeeded, the rest of this should be safe.
-            try
-            {
-                cmd.issuedBySelf = data.ReadBool();
-
-                MpTrace.Info($"HandleCommand: SUCCESSFULLY DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}.");
+                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
 
                 Session.ScheduleCommand(cmd);
                 Multiplayer.session.receivedCmds++;
@@ -75,7 +58,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                MpTrace.Error($"HandleCommand: Exception AFTER deserialization. Exception: {e}");
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
             }
         }
 
