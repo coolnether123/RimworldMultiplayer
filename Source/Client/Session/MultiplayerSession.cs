@@ -220,6 +220,7 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
+            // This top-level log is still useful.
             MpTrace.Info($"ScheduleCommand: Received {cmd.type} for mapId {cmd.mapId}, tick {cmd.ticks}.");
 
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
@@ -233,19 +234,28 @@ namespace Multiplayer.Client
             else
             {
                 Map map = cmd.GetMap();
-                var asyncTime = map?.AsyncTime();
 
-                if (map != null && asyncTime != null)
+                // If the map doesn't exist yet, buffer the command.
+                if (map == null)
                 {
-                    asyncTime.cmds.Enqueue(cmd);
-                    MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
-                }
-                else
-                {
-                    // Instead of dropping, we buffer the command.
-                    MpTrace.Warning($"--> Map {cmd.mapId} not ready. Buffering command {cmd.type}.");
+                    MpTrace.Warning($"--> Map {cmd.mapId} not loaded. Buffering command {cmd.type}.");
                     bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                    return;
                 }
+
+                var asyncTime = map.AsyncTime();
+
+                // If the map exists but its AsyncTime component is not ready, buffer the command.
+                if (asyncTime == null)
+                {
+                    MpTrace.Warning($"--> Map {cmd.mapId} exists, but its AsyncTime is not ready. Buffering command {cmd.type}.");
+                    bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                    return;
+                }
+
+                // If both map and asyncTime are ready, queue the command directly.
+                asyncTime.cmds.Enqueue(cmd);
+                MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
             }
         }
 
