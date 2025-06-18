@@ -45,27 +45,13 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            // First, get a copy of the entire packet's remaining data.
-            // data.Left gives us the number of unread bytes.
-            byte[] rawData = data.ReadRaw(data.Left);
-
-            // Now, create a reader from this copy just for peeking.
-            var peekReader = new ByteReader(rawData);
-            CommandType peekedType = (CommandType)peekReader.ReadInt32();
-
-            // Log the type we are about to process.
-            MpTrace.Info($"HandleCommand: Received Server_Command. About to process packet of type: {peekedType}.");
-
-            ScheduledCommand cmd = null;
             try
             {
-                // Create another new reader from the same raw data for the actual deserialization.
-                var processingReader = new ByteReader(rawData);
+                // The Deserialize method now handles everything, including the issuedBySelf flag.
+                // We no longer need to read anything else from the stream here.
+                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
 
-                cmd = ScheduledCommand.Deserialize(processingReader);
-                cmd.issuedBySelf = processingReader.ReadBool();
-
-                MpTrace.Info($"--> HandleCommand: SUCCESSFULLY DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}.");
+                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
 
                 Session.ScheduleCommand(cmd);
                 Multiplayer.session.receivedCmds++;
@@ -73,8 +59,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                // If this log appears, we have found the exact point of failure.
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during deserialization of {peekedType}. Command dropped. Exception: {e}");
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
             }
         }
 
