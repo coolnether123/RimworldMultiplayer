@@ -45,18 +45,19 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            // Store the raw data before trying to read it.
-            byte[] rawData = data.ReadRaw(data.Length);
+            // Get the raw byte array from the incoming reader first.
+            // This represents the entire packet's content.
+            byte[] rawDataForLogging = data.ReadRaw(data.Length);
             ScheduledCommand cmd = null;
 
             try
             {
-                // Use a new reader with the stored raw data.
-                var reader = new ByteReader(rawData);
+                // Now, create a *new* reader from the raw byte array to perform the deserialization.
+                // This leaves the original 'data' object untouched, but it's cleaner this way.
+                var readerForDeserialization = new ByteReader(rawDataForLogging);
 
-                // This is where we expect the failure might be happening.
-                cmd = ScheduledCommand.Deserialize(reader);
-                cmd.issuedBySelf = reader.ReadBool();
+                cmd = ScheduledCommand.Deserialize(readerForDeserialization);
+                cmd.issuedBySelf = readerForDeserialization.ReadBool();
 
                 // If we reach here, deserialization was successful.
                 MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Tick: {cmd.ticks}.");
@@ -68,7 +69,7 @@ namespace Multiplayer.Client
             catch (Exception e)
             {
                 // This log will now capture the exact error and the data that caused it.
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. The command will be dropped. Exception: {e}\nRaw Data ({rawData.Length} bytes): {System.BitConverter.ToString(rawData).Replace("-", " ")}");
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}\nRaw Data ({rawDataForLogging.Length} bytes): {System.BitConverter.ToString(rawDataForLogging).Replace("-", " ")}");
             }
         }
 

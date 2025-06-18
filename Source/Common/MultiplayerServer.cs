@@ -163,7 +163,13 @@ namespace Multiplayer.Common
 
             if (NetTimer % 6 == 0)
                 foreach (var player in JoinedPlayers)
-                    player.SendPacket(Packets.Server_KeepAlive, ByteWriter.GetBytes(player.keepAliveId), false);
+                {
+                    // === NEW LOGIC: ONLY SEND KEEP-ALIVES TO PLAYERS WHO ARE ACTUALLY PLAYING ===
+                    if (player.IsPlaying) // IsPlaying checks if their state is ServerPlaying
+                    {
+                        player.SendPacket(Packets.Server_KeepAlive, ByteWriter.GetBytes(player.keepAliveId), false);
+                    }
+                }
 
             SendToPlaying(Packets.Server_TimeControl, ByteWriter.GetBytes(gameTimer, sentCmdsSnapshot, serverTimePerTick), false);
 
