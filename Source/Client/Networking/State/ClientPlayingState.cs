@@ -45,20 +45,29 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            // Read only the REMAINING bytes from the reader's current position.
-            byte[] rawDataForLogging = data.ReadRaw(data.Left);
             ScheduledCommand cmd = null;
+
+            // We log *before* touching the reader to see if we get here.
+            MpTrace.Info("HandleCommand: Entered method.");
 
             try
             {
-                // Now, create a *new* reader from the raw byte array to perform the deserialization.
-                var readerForDeserialization = new ByteReader(rawDataForLogging);
+                // This is the only line that can be failing.
+                cmd = ScheduledCommand.Deserialize(data);
+            }
+            catch (Exception e)
+            {
+                // If this log appears, we have found the exact point of failure.
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during ScheduledCommand.Deserialize. Exception: {e}");
+                return; // Abort on failure.
+            }
 
-                cmd = ScheduledCommand.Deserialize(readerForDeserialization);
-                cmd.issuedBySelf = readerForDeserialization.ReadBool();
+            // If the above code succeeded, the rest of this should be safe.
+            try
+            {
+                cmd.issuedBySelf = data.ReadBool();
 
-                // If we reach here, deserialization was successful.
-                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Tick: {cmd.ticks}.");
+                MpTrace.Info($"HandleCommand: SUCCESSFULLY DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}.");
 
                 Session.ScheduleCommand(cmd);
                 Multiplayer.session.receivedCmds++;
@@ -66,8 +75,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                // This log will now capture the exact error and the data that caused it.
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}\nRaw Data ({rawDataForLogging.Length} bytes): {System.BitConverter.ToString(rawDataForLogging).Replace("-", " ")}");
+                MpTrace.Error($"HandleCommand: Exception AFTER deserialization. Exception: {e}");
             }
         }
 
