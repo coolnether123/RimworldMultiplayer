@@ -199,22 +199,15 @@ namespace Multiplayer.Client
         private static bool RunCmds()
         {
             int curTimer = Timer;
-
             foreach (ITickable tickable in AllTickables)
             {
                 while (tickable.Cmds.Count > 0 && tickable.Cmds.Peek().ticks == curTimer)
                 {
                     ScheduledCommand cmd = tickable.Cmds.Dequeue();
-                    if (cmd.type == CommandType.Sync) // Only log the important ones
-                    {
-                        MpTrace.Verbose($"Client EXECUTING DEQUEUED command: {cmd.type}, Target Map: {cmd.mapId}, Tick: {cmd.ticks}.");
-                    }
                     tickable.ExecuteCmd(cmd);
-
-                    if (LongEventHandler.eventQueue.Count > 0) return true; // Yield to e.g. join-point creation
+                    if (LongEventHandler.eventQueue.Count > 0) return true;
                 }
             }
-
             return false;
         }
 
@@ -223,12 +216,15 @@ namespace Multiplayer.Client
             worked = false;
             updateTimer.Restart();
 
+            // Run commands once per frame, unconditionally.
             if (RunCmds()) return;
 
             while (Simulating ? (Timer < simulating.target && updateTimer.ElapsedMilliseconds < 25) : (ticksToRun > 0))
             {
-                if (DoTick(ref worked))
-                    return;
+                // Re-check commands inside the loop in case a tick produces a command for the current tick (e.g., quests)
+                if (RunCmds()) return;
+
+                if (DoTick(ref worked)) return;
             }
         }
 
@@ -245,21 +241,20 @@ namespace Multiplayer.Client
         public static bool DoTick(ref bool worked)
         {
             tickTimer.Restart();
+            worked = true; // A tick is always considered work
 
+            // Tick the simulation for all tickable components
             foreach (ITickable tickable in AllTickables)
             {
-                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) == 0) continue;
-                tickable.TimeToTickThrough += 1f;
-
-                worked = true;
-                TickTickable(tickable);
-            }   
+                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) > 0)
+                {
+                    TickTickable(tickable);
+                }
+            }
 
             ConstantTicker.Tick();
-
-            ticksToRun -= 1;
-            Timer += 1;
-
+            Timer++;
+            ticksToRun--;
             tickTimer.Stop();
 
             if (Multiplayer.session.desynced || Timer >= tickUntil || LongEventHandler.eventQueue.Count > 0)
@@ -273,22 +268,21 @@ namespace Multiplayer.Client
 
         private static void TickTickable(ITickable tickable)
         {
+            float timePerTick = tickable.TimePerTick(tickable.DesiredTimeSpeed);
+            if (timePerTick == 0) return;
+
+            tickable.TimeToTickThrough += 1f;
             while (tickable.TimeToTickThrough >= 0)
             {
-                float timePerTick = tickable.TimePerTick(tickable.DesiredTimeSpeed);
-                if (timePerTick == 0) break;
-
                 tickable.TimeToTickThrough -= timePerTick;
 
                 try
                 {
-                    // Set the context based on the type of tickable object
                     if (tickable is AsyncWorldTimeComp)
                         AsyncWorldTimeComp.tickingWorld = true;
                     else if (tickable is AsyncTimeComp comp)
                         AsyncTimeComp.tickingMap = comp.map;
 
-                    // Execute the tick with the correct context active
                     tickable.Tick();
                 }
                 catch (Exception e)
@@ -297,7 +291,6 @@ namespace Multiplayer.Client
                 }
                 finally
                 {
-                    // ALWAYS reset the context flags after the tick is complete
                     if (tickable is AsyncWorldTimeComp)
                         AsyncWorldTimeComp.tickingWorld = false;
                     else if (tickable is AsyncTimeComp)
