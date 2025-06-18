@@ -97,26 +97,27 @@ namespace Multiplayer.Client
             return false;
         }
 
-        // CHECKPOINT 3: Detecting a New Path on Host
+
         // CHECKPOINT 3: Detecting a New Path on Host
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
-            Pawn pawn = __instance.pawn;
-            PawnPath currentPath = __instance.curPath;
-            lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
-            if (currentPath != cachedPathInstance)
-            {
-                lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
-                var newSurrogate = new PawnPathSurrogate(currentPath);
-                lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
-                if (!newSurrogate.IsSameAs(lastSentSurrogate))
-                {
-                    MpTrace.Verbose($"Host detected new path for {pawn.LabelShortCap} (Valid: {newSurrogate.isValid}, Nodes: {newSurrogate.NodeCount}). Sending sync.");
-                    SyncedActions.SetPawnPath(pawn, newSurrogate);
-                    lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
-                }
-            }
+            /* TEMPORARILY DISABLED FOR TESTING
+             if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
+             Pawn pawn = __instance.pawn;
+             PawnPath currentPath = __instance.curPath;
+             lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
+             if (currentPath != cachedPathInstance)
+             {
+                 lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
+                 var newSurrogate = new PawnPathSurrogate(currentPath);
+                 lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
+                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
+                 {
+                     MpTrace.Verbose($"Host detected new path for {pawn.LabelShortCap} (Valid: {newSurrogate.isValid}, Nodes: {newSurrogate.NodeCount}). Sending sync.");
+                     SyncedActions.SetPawnPath(pawn, newSurrogate);
+                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
+                 }
+             }*/
         }
 
         public static bool Prefix_SetNewPathRequest(Pawn_PathFollower __instance)
@@ -150,16 +151,16 @@ namespace Multiplayer.Client
         public int count = -1;
         */
 
-        // public bool playerForced; // Temporarily disable
-        // public bool canBashDoors; // Temporarily disable
-        // public bool canBashFences; // Temporarily disable
-        // public HaulMode haulMode; // Temporarily disable
-        // public Faction lordFaction; // Temporarily disable
-        // public int takeExtraIngestibles; // Temporarily disable
-        // private ThinkTreeDef thinkTreeDef; // DEFINITELY disable this
-        // private int jobGiverKey; // DEFINITELY disable this
-        // private Thing verbCaster; // DEFINITELY disable this
-        // private string verbLabel; // DEFINITELY disable this
+            // public bool playerForced; // Temporarily disable
+            // public bool canBashDoors; // Temporarily disable
+            // public bool canBashFences; // Temporarily disable
+            // public HaulMode haulMode; // Temporarily disable
+            // public Faction lordFaction; // Temporarily disable
+            // public int takeExtraIngestibles; // Temporarily disable
+            // private ThinkTreeDef thinkTreeDef; // DEFINITELY disable this
+            // private int jobGiverKey; // DEFINITELY disable this
+            // private Thing verbCaster; // DEFINITELY disable this
+            // private string verbLabel; // DEFINITELY disable this
 
         public JobParams() { }
 
@@ -193,9 +194,10 @@ namespace Multiplayer.Client
         public Job ToJob()
         {
             Job job = JobMaker.MakeJob(def);
-            job.targetA = targetA;
+
 
             /* Removing for testing should still need
+            job.targetA = targetA;
             job.targetB = targetB;
             job.targetC = targetC;
             job.targetQueueA = targetQueueA;
