@@ -259,6 +259,29 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
+            //TESTING 6/17/2025
+            if (Multiplayer.Client != null && Find.CurrentMap != null)
+            {
+                List<Map> maps = Find.Maps;
+                for (int i = 0; i < maps.Count; i++)
+                {
+                    Map map = maps[i];
+                    if (map != Find.CurrentMap)
+                    {
+                        // We only need to tick the pathers, not the full pawn AI.
+                        // PatherTick updates the drawer/tweener for smooth movement.
+                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
+                        foreach (Pawn pawn in pawnsOnMap)
+                        {
+                            if (pawn != null && pawn.Spawned && pawn.pather != null)
+                            {
+                                pawn.pather.PatherTick();
+                            }
+                        }
+                    }
+                }
+            }
+
             Timer++;
             ticksToRun--;
 
