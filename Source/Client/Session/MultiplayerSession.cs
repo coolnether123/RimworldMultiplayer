@@ -221,7 +221,7 @@ namespace Multiplayer.Client
         public void ScheduleCommand(ScheduledCommand cmd)
         {
             // This top-level log is still useful.
-            MpTrace.Info($"ScheduleCommand: Received {cmd.type} for mapId {cmd.mapId}, tick {cmd.ticks}.");
+            //MpTrace.Info($"ScheduleCommand: Received {cmd.type} for mapId {cmd.mapId}, tick {cmd.ticks}.");
 
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
             if (Current.ProgramState != ProgramState.Playing) return;
@@ -229,7 +229,7 @@ namespace Multiplayer.Client
             if (cmd.mapId == ScheduledCommand.Global)
             {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
-                MpTrace.Info("--> Queued GLOBAL command.");
+                //MpTrace.Info("--> Queued GLOBAL command.");
             }
             else
             {
@@ -255,7 +255,7 @@ namespace Multiplayer.Client
 
                 // If both map and asyncTime are ready, queue the command directly.
                 asyncTime.cmds.Enqueue(cmd);
-                MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
+                //MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
             }
         }
 

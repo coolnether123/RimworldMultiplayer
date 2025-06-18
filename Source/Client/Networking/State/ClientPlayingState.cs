@@ -51,7 +51,7 @@ namespace Multiplayer.Client
                 // We no longer need to read anything else from the stream here.
                 ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
 
-                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
+                //MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
 
                 Session.ScheduleCommand(cmd);
                 Multiplayer.session.receivedCmds++;
@@ -59,7 +59,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
+                //MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
             }
         }
 

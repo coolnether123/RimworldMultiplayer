@@ -82,7 +82,7 @@ namespace Multiplayer.Client
                 // Use a less spammy way to log this
                 if (Find.TickManager.TicksGame % 60 == 0)
                 {
-                    MpTrace.Info($"TickPatch.Prefix invoked. Timer: {Timer}, TicksToRun: {ticksToRun}, ShouldHandle: {ShouldHandle}");
+                    //MpTrace.Info($"TickPatch.Prefix invoked. Timer: {Timer}, TicksToRun: {ticksToRun}, ShouldHandle: {ShouldHandle}");
                 }
             }
             if (Multiplayer.Client == null) return true;
@@ -94,7 +94,7 @@ namespace Multiplayer.Client
                 // Unset the flag so this only runs once.
                 Multiplayer.justLoaded = false;
 
-                Log.Message("Multiplayer [TickPatch]: Running post-load initialization.");
+                //Log.Message("Multiplayer [TickPatch]: Running post-load initialization.");
 
                 // Manually prime the history for all factions.
                 if (Multiplayer.WorldComp != null)

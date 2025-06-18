@@ -101,22 +101,37 @@ namespace Multiplayer.Client
         // CHECKPOINT 3: Detecting a New Path on Host
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-             if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
-             Pawn pawn = __instance.pawn;
-             PawnPath currentPath = __instance.curPath;
-             lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
-             if (currentPath != cachedPathInstance)
-             {
-                 lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
-                 var newSurrogate = new PawnPathSurrogate(currentPath);
-                 lastSyncedSurrogateCache.TryGetValue(pawn.thingIDNumber, out var lastSentSurrogate);
-                 if (!newSurrogate.IsSameAs(lastSentSurrogate))
-                 {
-                     MpTrace.Verbose($"Host detected new path for {pawn.LabelShortCap} (Valid: {newSurrogate.isValid}, Nodes: {newSurrogate.NodeCount}). Sending sync.");
-                     SyncedActions.SetPawnPath(pawn, newSurrogate);
-                     lastSyncedSurrogateCache[pawn.thingIDNumber] = newSurrogate;
-                 }
-             }
+            if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
+
+            Pawn pawn = __instance.pawn;
+            PawnPath currentPath = __instance.curPath;
+
+            lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
+
+            // Check if the path has changed since the last tick
+            if (currentPath != cachedPathInstance)
+            {
+                lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
+
+                bool isValid = currentPath != null && currentPath.Found;
+                int totalCost = isValid ? (int)currentPath.TotalCost : 0;
+
+                // Manual serialization of the path nodes
+                int[] nodes = null;
+                if (isValid)
+                {
+                    var nodeList = currentPath.NodesReversed;
+                    nodes = new int[nodeList.Count * 2];
+                    for (int i = 0; i < nodeList.Count; i++)
+                    {
+                        nodes[i * 2] = nodeList[i].x;
+                        nodes[i * 2 + 1] = nodeList[i].z;
+                    }
+                }
+
+                // Call the new, simplified SyncMethod
+                SyncedActions.SetPawnPath(pawn, isValid, totalCost, nodes);
+            }
         }
 
         public static bool Prefix_SetNewPathRequest(Pawn_PathFollower __instance)
@@ -362,37 +377,38 @@ namespace Multiplayer.Client
         }
 
         [SyncMethod]
-        public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surrogate)
+        public static void SetPawnPath(Pawn pawn, bool isValid, int totalCost, int[] nodes)
         {
-            MpTrace.Info($"Applying synced path to {pawn?.LabelShortCap}. (Valid: {surrogate.isValid}, Nodes: {surrogate.NodeCount})");
+            // This log is now the most important one.
+            MpTrace.Info($"Applying synced path to {pawn?.LabelShortCap}. (Valid: {isValid})");
 
-            if (Multiplayer.LocalServer != null) return;
+            if (Multiplayer.LocalServer != null) return; // Host only sends
             if (pawn == null || pawn.pather == null) return;
 
-            // Although this doesn't call StartJob, it's good practice to wrap it
-            // in case future logic changes. It has no negative side effects.
-            try
-            {
-                PathingPatches.IsExecutingSyncCommand = true;
-                var pather = pawn.pather;
-                PawnPath newPath = surrogate.ToPawnPath(pawn);
+            var pather = pawn.pather;
+            pather.curPath?.ReleaseToPool(); // Always release the old path
 
-                pather.curPath?.ReleaseToPool();
-                pather.curPath = newPath;
-
-                if (newPath.Found)
-                {
-                    pather.ResetToCurrentPosition();
-                }
-                else
-                {
-                    pather.PatherFailed();
-                }
-            }
-            finally
+            if (!isValid)
             {
-                PathingPatches.IsExecutingSyncCommand = false;
+                pather.curPath = PawnPath.NotFound;
+                pather.PatherFailed();
+                return;
             }
+
+            // Reconstruct the path from the primitive data
+            PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
+            var nativeNodes = new NativeList<IntVec3>(nodes.Length / 2, Allocator.Temp);
+            for (int i = 0; i < nodes.Length / 2; i++)
+            {
+                nativeNodes.Add(new IntVec3(nodes[i * 2], 0, nodes[i * 2 + 1]));
+            }
+
+            newPath.Initialize(nativeNodes, totalCost);
+            nativeNodes.Dispose();
+
+            pather.curPath = newPath;
+            pather.ResetToCurrentPosition();
         }
     }
 }
+
