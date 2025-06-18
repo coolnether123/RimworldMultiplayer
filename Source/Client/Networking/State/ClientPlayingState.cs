@@ -45,15 +45,13 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            // Get the raw byte array from the incoming reader first.
-            // This represents the entire packet's content.
-            byte[] rawDataForLogging = data.ReadRaw(data.Length);
+            // Read only the REMAINING bytes from the reader's current position.
+            byte[] rawDataForLogging = data.ReadRaw(data.Left);
             ScheduledCommand cmd = null;
 
             try
             {
                 // Now, create a *new* reader from the raw byte array to perform the deserialization.
-                // This leaves the original 'data' object untouched, but it's cleaner this way.
                 var readerForDeserialization = new ByteReader(rawDataForLogging);
 
                 cmd = ScheduledCommand.Deserialize(readerForDeserialization);
