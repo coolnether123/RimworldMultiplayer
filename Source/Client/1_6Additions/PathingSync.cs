@@ -1,220 +1,176 @@
-// In new file: PathingSync.cs
+// File: Source/Client/Syncing/PathingSync.cs
 
 using HarmonyLib;
 using Multiplayer.API;
 using RimWorld;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.Collections; // Required for NativeList
+using Unity.Collections;
 using Verse;
 using Verse.AI;
 
 namespace Multiplayer.Client
 {
     //############################################################################
-    // SECTION 1: HARMONY PATCHER
+    // SECTION 1: INITIALIZATION & PATCH APPLYING
     //############################################################################
 
     [StaticConstructorOnStartup]
-    public static class PathingSyncHarmony
+    public static class PathingSyncInit
     {
-        static PathingSyncHarmony()
+        static PathingSyncInit()
         {
-            var harmony = Multiplayer.harmony;
-            Log.Message("[Multiplayer-Pathing] Applying definitive sync patches (v18)...");
-
-            harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
-                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)),
-                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_StartJob)));
-
-
-            harmony.Patch(AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob)),
-                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_TryTakeOrderedJob)));
-            
-
-            harmony.Patch(AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
-                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PatherTick)));
-            
-
-            harmony.Patch(AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.SetNewPathRequest)),
-                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_SetNewPathRequest)));
-            
-
-            harmony.Patch(AccessTools.Method(typeof(Pawn), nameof(Pawn.DeSpawn)),
-                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PawnDeSpawn)));
-            Log.Message("[Multiplayer-Pathing] Patches applied successfully.");
+            if (!MP.enabled) return;            // Skip in single-player
+            MP.RegisterAll();                    // Discover all [SyncMethod] & [SyncWorker]
+            new Harmony("coolnether123.pathingsync").PatchAll();
         }
     }
 
     //############################################################################
-    // SECTION 2: THE PATCH IMPLEMENTATIONS
+    // SECTION 2: HARMONY PATCH CLASSES
     //############################################################################
 
-    public static class PathingPatches
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
+    [HarmonyPatch(new[]
     {
-        public static bool IsExecutingSyncCommand = false;
-        public static int InSyncAction = 0; // Use an int counter, not a bool
-
-        private static Dictionary<int, PawnPath> lastPathInstanceCache = new();
-        private static Dictionary<int, PawnPathSurrogate> lastSyncedSurrogateCache = new();
-
-        // This patch now ONLY has one job: stop clients from starting AI jobs.
-        public static bool Prefix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
+        typeof(Job), typeof(JobCondition), typeof(ThinkNode), typeof(bool)
+    })]
+    static class Pawn_JobTracker_StartJob_Patch
+    {
+        static bool Prefix(Pawn_JobTracker __instance,
+                           Job newJob,
+                           JobCondition _cond,
+                           ThinkNode jobGiver,
+                           bool _resume)
         {
-            if (IsExecutingSyncCommand) return true;
+            // Allow if coming from a synced action
+            if (PathingPatches.InSyncAction > 0) return true;
 
-            if (PathingPatches.InSyncAction > 0)
-            {
-                // This log is now the most important one. If we see this, we are on the right track.
-                MpTrace.Info($"Allowing job ({__instance.pawn.CurJob?.def.defName}) for {__instance.pawn.LabelShortCap} because InSyncAction > 0.");
-                return true;
-            }
-
-            if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null)
-            {
-                // We are a client, and this is an AI job. Block it.
-                MpTrace.Verbose($"Blocking AI jobgiver {jobGiver.GetType().Name} for {__instance.pawn.LabelShortCap}.");
+            // Block AI jobs on pure clients
+            if (Multiplayer.Client != null &&
+                Multiplayer.LocalServer == null &&
+                jobGiver != null)
                 return false;
-            }
-            // Host runs everything. Player-ordered jobs run everywhere (but are synced separately).
+
             return true;
         }
 
-        public static void Postfix_StartJob(Pawn_JobTracker __instance, ThinkNode jobGiver)
+        static void Postfix(Pawn_JobTracker __instance,
+                            Job newJob,
+                            JobCondition _cond,
+                            ThinkNode jobGiver,
+                            bool _resume)
         {
-            if (Multiplayer.LocalServer != null && jobGiver != null && __instance.curJob != null)
-            {
-                MpTrace.Verbose($"Host detected new AI job ({__instance.curJob.def.defName}) for {__instance.pawn.LabelShortCap}. Sending sync.");
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(__instance.curJob));
-            }
+            if (Multiplayer.LocalServer == null || jobGiver == null) return;
+            SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
         }
+    }
 
-        // CHECKPOINT 2: Intercepting a Player-Ordered Job
-        public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob))]
+    [HarmonyPatch(new[] { typeof(Job), typeof(JobTag?) })]
+    static class Pawn_JobTracker_TryTakeOrderedJob_Patch
+    {
+        static bool Prefix(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
             if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
             SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
             return false;
         }
+    }
 
-
-        // We need a way to track the last time we synced a path for each pawn
-        private static Dictionary<int, int> lastPathSyncTick = new Dictionary<int, int>();
-
-        // We also need to cache the last *content* of the path we sent, not just the object instance
-        private static Dictionary<int, (IntVec3, IntVec3, int)> lastPathContentCache = new Dictionary<int, (IntVec3, IntVec3, int)>();
-
-        public static void Postfix_PatherTick(Pawn_PathFollower __instance)
+    [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
+    static class Pawn_PathFollower_PatherTick_Patch
+    {
+        static void Postfix(Pawn_PathFollower __instance)
         {
-            // Exit early if not host or pawn is invalid
-            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
-
+            if (Multiplayer.LocalServer == null) return;
             Pawn pawn = __instance.pawn;
-            int pawnId = pawn.thingIDNumber;
+            if (!pawn.Spawned || pawn.Drafted) return;
 
-            // === THROTTLER ===
-            // Only check for a new path every 30 ticks for this pawn
-            if (lastPathSyncTick.TryGetValue(pawnId, out int lastTick) && GenTicks.TicksGame < lastTick + 30)
-            {
+            int id = pawn.thingIDNumber;
+            if (PathingPatches.lastSyncTick.TryGetValue(id, out int last) &&
+                GenTicks.TicksGame < last + 30)
                 return;
-            }
 
-            PawnPath currentPath = __instance.curPath;
-            bool pathIsValid = currentPath != null && currentPath.Found;
+            PawnPath p = __instance.curPath;
+            var content = (p is { Found: true }
+                ? (p.FirstNode, p.LastNode, p.NodesLeftCount)
+                : (IntVec3.Invalid, IntVec3.Invalid, 0));
 
-            // Get the content of the current path
-            (IntVec3, IntVec3, int) currentPathContent = (IntVec3.Invalid, IntVec3.Invalid, 0);
-            if (pathIsValid)
-            {
-                currentPathContent = (currentPath.FirstNode, currentPath.LastNode, currentPath.NodesLeftCount);
-            }
+            if (PathingPatches.lastContentCache.TryGetValue(id, out var prev) &&
+                prev.Equals(content))
+                return;
 
-            // Get the last synced content from our cache
-            lastPathContentCache.TryGetValue(pawnId, out var lastSentContent);
+            PathingPatches.lastContentCache[id] = content;
+            PathingPatches.lastSyncTick[id] = GenTicks.TicksGame;
 
-            // === CONTENT CHECK ===
-            // Only sync if the path content is actually different
-            if (currentPathContent != lastSentContent)
-            {
-                // Update caches
-                lastPathSyncTick[pawnId] = GenTicks.TicksGame;
-                lastPathContentCache[pawnId] = currentPathContent;
-
-                // The manual serialization from before was correct. Let's reuse it.
-                int totalCost = pathIsValid ? (int)currentPath.TotalCost : 0;
-                int[] nodes = null;
-                if (pathIsValid)
-                {
-                    var nodeList = currentPath.NodesReversed;
-                    nodes = new int[nodeList.Count * 2];
-                    for (int i = 0; i < nodeList.Count; i++)
-                    {
-                        nodes[i * 2] = nodeList[i].x;
-                        nodes[i * 2 + 1] = nodeList[i].z;
-                    }
-                }
-
-                MpTrace.Info($"Host detected MEANINGFULLY new path for {pawn.LabelShortCap}. Sending sync.");
-                SyncedActions.SetPawnPath(pawn, pathIsValid, totalCost, nodes);
-            }
+            // Send the full surrogate path
+            SyncedActions.SetPawnPath(pawn, new PawnPathSurrogate(p));
         }
+    }
 
-        public static bool Prefix_SetNewPathRequest(Pawn_PathFollower __instance)
+    [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.SetNewPathRequest))]
+    static class Pawn_PathFollower_SetNewPathRequest_Patch
+    {
+        static bool Prefix(Pawn_PathFollower __instance)
         {
             return Multiplayer.Client == null || Multiplayer.LocalServer != null;
         }
+    }
 
-        public static void Postfix_PawnDeSpawn(Pawn __instance)
+    [HarmonyPatch(typeof(Pawn), nameof(Pawn.DeSpawn))]
+    static class Pawn_DeSpawn_Patch
+    {
+        static void Postfix(Pawn __instance)
         {
-            if (Multiplayer.Client == null) return;
-            lastPathInstanceCache.Remove(__instance.thingIDNumber);
-            lastSyncedSurrogateCache.Remove(__instance.thingIDNumber);
+            int id = __instance.thingIDNumber;
+            PathingPatches.lastContentCache.Remove(id);
+            PathingPatches.lastSyncTick.Remove(id);
         }
     }
 
     //############################################################################
-    // SECTION 3: DATA TRANSFER OBJECTS (DTOs)
+    // SECTION 3: PATCH IMPLEMENTATIONS & CACHES
+    //############################################################################
+
+    public static class PathingPatches
+    {
+        internal static int InSyncAction = 0;
+        internal static readonly Dictionary<int, (IntVec3 first, IntVec3 last, int left)> lastContentCache
+            = new Dictionary<int, (IntVec3, IntVec3, int)>();
+        internal static readonly Dictionary<int, int> lastSyncTick
+            = new Dictionary<int, int>();
+    }
+
+    //############################################################################
+    // SECTION 4: DATA TRANSFER OBJECTS (DTOs)
     //############################################################################
 
     public class JobParams : ISynchronizable
     {
         public JobDef def;
-
-        
-        public LocalTargetInfo targetA;
-        
-        public LocalTargetInfo targetB;
-        public LocalTargetInfo targetC;
-        public List<LocalTargetInfo> targetQueueA;
-        public List<LocalTargetInfo> targetQueueB;
+        public LocalTargetInfo targetA, targetB, targetC;
+        public List<LocalTargetInfo> targetQueueA, targetQueueB;
         public int count = -1;
-        
-
-        public bool playerForced; // Temporarily disable
-        public bool canBashDoors; // Temporarily disable
-        public bool canBashFences; // Temporarily disable
-        public HaulMode haulMode; // Temporarily disable
-        public Faction lordFaction; // Temporarily disable
-        public int takeExtraIngestibles; // Temporarily disable
-        private ThinkTreeDef thinkTreeDef; // DEFINITELY disable this
-        private int jobGiverKey; // DEFINITELY disable this
-        private Thing verbCaster; // DEFINITELY disable this
-        private string verbLabel; // DEFINITELY disable this
+        public bool playerForced, canBashDoors, canBashFences;
+        public HaulMode haulMode;
+        public Faction lordFaction;
+        public int takeExtraIngestibles;
+        private ThinkTreeDef thinkTreeDef;
+        private int jobGiverKey;
+        private Thing verbCaster;
+        private string verbLabel;
 
         public JobParams() { }
-
         public JobParams(Job job)
         {
             def = job.def;
             targetA = job.targetA;
-            
             targetB = job.targetB;
             targetC = job.targetC;
             targetQueueA = job.targetQueueA?.ToList();
             targetQueueB = job.targetQueueB?.ToList();
             count = job.count;
-            
-
             playerForced = job.playerForced;
             canBashDoors = job.canBashDoors;
             canBashFences = job.canBashFences;
@@ -232,33 +188,28 @@ namespace Multiplayer.Client
 
         public Job ToJob()
         {
-            Job job = JobMaker.MakeJob(def);
-
-
-            
+            var job = JobMaker.MakeJob(def);
             job.targetA = targetA;
             job.targetB = targetB;
             job.targetC = targetC;
             job.targetQueueA = targetQueueA;
             job.targetQueueB = targetQueueB;
             job.count = count;
-            
-
             job.playerForced = playerForced;
             job.canBashDoors = canBashDoors;
             job.canBashFences = canBashFences;
             job.haulMode = haulMode;
             job.takeExtraIngestibles = takeExtraIngestibles;
-
-            
-            if (thinkTreeDef != null && jobGiverKey != -1 && thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out ThinkNode node))
+            if (thinkTreeDef != null &&
+                thinkTreeDef.TryGetThinkNodeWithSaveKey(jobGiverKey, out var node))
             {
                 job.jobGiver = node;
                 job.jobGiverThinkTree = thinkTreeDef;
             }
-            if (verbCaster != null && !verbLabel.NullOrEmpty() && verbCaster is IVerbOwner owner)
+            if (verbCaster is IVerbOwner owner && !verbLabel.NullOrEmpty())
             {
-                job.verbToUse = owner.VerbTracker?.AllVerbs.FirstOrDefault(v => v.verbProps.label == verbLabel);
+                job.verbToUse = owner.VerbTracker.AllVerbs
+                    .FirstOrDefault(v => v.verbProps.label == verbLabel);
             }
             return job;
         }
@@ -267,15 +218,11 @@ namespace Multiplayer.Client
         {
             worker.Bind(ref def);
             worker.Bind(ref targetA);
-
-            
             worker.Bind(ref targetB);
             worker.Bind(ref targetC);
             worker.Bind(ref targetQueueA);
             worker.Bind(ref targetQueueB);
             worker.Bind(ref count);
-            
-
             worker.Bind(ref playerForced);
             worker.Bind(ref canBashDoors);
             worker.Bind(ref canBashFences);
@@ -295,26 +242,16 @@ namespace Multiplayer.Client
         private List<IntVec3> nodes;
         private int totalCost;
 
-        public int NodeCount => nodes?.Count ?? 0;
-
         public PawnPathSurrogate() { }
-
-        public bool IsSameAs(PawnPathSurrogate other)
-        {
-            if (other == null) return false;
-            if (this.isValid != other.isValid) return false;
-            if (!this.isValid) return true;
-            if (this.NodeCount != other.NodeCount) return false;
-            if (this.totalCost != other.totalCost) return false;
-            if (this.NodeCount == 0) return true;
-            if (this.nodes[0] != other.nodes[0]) return false;
-            if (this.nodes[this.NodeCount - 1] != other.nodes[other.NodeCount - 1]) return false;
-            return true;
-        }
 
         public PawnPathSurrogate(PawnPath path)
         {
-            if (path == null || !path.Found) { isValid = false; return; }
+            if (path == null || !path.Found)
+            {
+                isValid = false;
+                return;
+            }
+
             isValid = true;
             totalCost = (int)path.TotalCost;
             nodes = new List<IntVec3>(path.NodesReversed);
@@ -323,17 +260,11 @@ namespace Multiplayer.Client
         public PawnPath ToPawnPath(Pawn pawn)
         {
             if (!isValid) return PawnPath.NotFound;
-            PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
-
-            var nativeNodes = new NativeList<IntVec3>(nodes.Count, Allocator.Temp);
-            foreach (var node in nodes)
-            {
-                nativeNodes.Add(node);
-            }
-
-            newPath.Initialize(nativeNodes, totalCost);
-            nativeNodes.Dispose();
-
+            var newPath = pawn.Map.pawnPathPool.GetPath();
+            var native = new NativeList<IntVec3>(nodes.Count, Allocator.Temp);
+            foreach (var n in nodes) native.Add(n);
+            newPath.Initialize(native, totalCost);
+            native.Dispose();
             return newPath;
         }
 
@@ -346,94 +277,45 @@ namespace Multiplayer.Client
         }
     }
 
-
     //############################################################################
-    // SECTION 4: SYNCED ACTIONS
+    // SECTION 5: SYNCED ACTIONS
     //############################################################################
 
     public static class SyncedActions
     {
-        [SyncMethod]
-        public static void StartJobAI(Pawn pawn, JobParams jobParams)
+        [SyncMethod(context = SyncContext.CurrentMap)]
+        public static void StartJobAI(Pawn pawn, JobParams prms)
         {
-            MpTrace.Info($"Executing synced AI job ({jobParams.def.defName}) for {pawn?.LabelShortCap}.");
-
             if (Multiplayer.LocalServer != null) return;
-
-            // vvv WRAP THE LOGIC IN TRY/FINALLY vvv
             try
             {
                 PathingPatches.InSyncAction++;
-                PathingPatches.IsExecutingSyncCommand = true;
-                Job job = jobParams.ToJob();
-                using (new Multiplayer.DontSync())
-                {
-                    pawn.jobs.StartJob(job, JobCondition.InterruptForced, job.jobGiver, resumeCurJobAfterwards: false, cancelBusyStances: true, thinkTree: job.jobGiverThinkTree);
-                }
+                pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced, null, false);
             }
-            finally
-            {
-                PathingPatches.InSyncAction--;
-                PathingPatches.IsExecutingSyncCommand = false;
-            }
-            // ^^^ WRAP THE LOGIC IN TRY/FINALLY ^^^
+            finally { PathingPatches.InSyncAction--; }
         }
 
-        [SyncMethod]
-        public static void TakeOrderedJob(Pawn pawn, JobParams jobParams, JobTag? tag)
+        [SyncMethod(context = SyncContext.CurrentMap)]
+        public static void TakeOrderedJob(Pawn pawn, JobParams prms, JobTag? tag)
         {
-            MpTrace.Info($"Executing synced ordered job ({jobParams.def.defName}) for {pawn?.LabelShortCap}.");
-
-            // vvv WRAP THE LOGIC IN TRY/FINALLY vvv
+            if (Multiplayer.LocalServer != null) return;
             try
             {
-                PathingPatches.IsExecutingSyncCommand = true;
-                Job job = jobParams.ToJob();
-                using (new Multiplayer.DontSync())
-                {
-                    pawn.jobs.TryTakeOrderedJob(job, tag);
-                }
+                PathingPatches.InSyncAction++;
+                pawn.jobs.TryTakeOrderedJob(prms.ToJob(), tag);
             }
-            finally
-            {
-                PathingPatches.IsExecutingSyncCommand = false;
-            }
-            // ^^^ WRAP THE LOGIC IN TRY/FINALLY ^^^
+            finally { PathingPatches.InSyncAction--; }
         }
 
-        [SyncMethod]
-        public static void SetPawnPath(Pawn pawn, bool isValid, int totalCost, int[] nodes)
+        [SyncMethod(context = SyncContext.CurrentMap)]
+        public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
-            // This log is now the most important one.
-            MpTrace.Info($"Applying synced path to {pawn?.LabelShortCap}. (Valid: {isValid})");
-
-            if (Multiplayer.LocalServer != null) return; // Host only sends
-            if (pawn == null || pawn.pather == null) return;
-
-            var pather = pawn.pather;
-            pather.curPath?.ReleaseToPool(); // Always release the old path
-
-            if (!isValid)
-            {
-                pather.curPath = PawnPath.NotFound;
-                pather.PatherFailed();
-                return;
-            }
-
-            // Reconstruct the path from the primitive data
-            PawnPath newPath = pawn.Map.pawnPathPool.GetPath();
-            var nativeNodes = new NativeList<IntVec3>(nodes.Length / 2, Allocator.Temp);
-            for (int i = 0; i < nodes.Length / 2; i++)
-            {
-                nativeNodes.Add(new IntVec3(nodes[i * 2], 0, nodes[i * 2 + 1]));
-            }
-
-            newPath.Initialize(nativeNodes, totalCost);
-            nativeNodes.Dispose();
-
-            pather.curPath = newPath;
-            pather.ResetToCurrentPosition();
+            if (Multiplayer.LocalServer != null || pawn?.pather == null) return;
+            var pf = pawn.pather;
+            pf.curPath?.ReleaseToPool();
+            pf.curPath = surr.ToPawnPath(pawn);
+            if (pf.curPath.Found) pf.ResetToCurrentPosition();
+            else pf.PatherFailed();
         }
     }
 }
-
