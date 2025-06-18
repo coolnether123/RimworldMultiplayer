@@ -98,30 +98,52 @@ namespace Multiplayer.Client
         }
 
 
-        // CHECKPOINT 3: Detecting a New Path on Host
+        // We need a way to track the last time we synced a path for each pawn
+        private static Dictionary<int, int> lastPathSyncTick = new Dictionary<int, int>();
+
+        // We also need to cache the last *content* of the path we sent, not just the object instance
+        private static Dictionary<int, (IntVec3, IntVec3, int)> lastPathContentCache = new Dictionary<int, (IntVec3, IntVec3, int)>();
+
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            // Throttle the check to run only once every 30 ticks for performance and to reduce log spam.
-            if (Find.TickManager.TicksGame % 30 != 0) return;
-
-            if (Multiplayer.Client == null || Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
+            // Exit early if not host or pawn is invalid
+            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
             Pawn pawn = __instance.pawn;
-            PawnPath currentPath = __instance.curPath;
+            int pawnId = pawn.thingIDNumber;
 
-            lastPathInstanceCache.TryGetValue(pawn.thingIDNumber, out var cachedPathInstance);
-
-            // Check if the path has changed since the last tick
-            if (currentPath != cachedPathInstance)
+            // === THROTTLER ===
+            // Only check for a new path every 30 ticks for this pawn
+            if (lastPathSyncTick.TryGetValue(pawnId, out int lastTick) && GenTicks.TicksGame < lastTick + 30)
             {
-                lastPathInstanceCache[pawn.thingIDNumber] = currentPath;
+                return;
+            }
 
-                bool isValid = currentPath != null && currentPath.Found;
-                int totalCost = isValid ? (int)currentPath.TotalCost : 0;
+            PawnPath currentPath = __instance.curPath;
+            bool pathIsValid = currentPath != null && currentPath.Found;
 
-                // Manual serialization of the path nodes
+            // Get the content of the current path
+            (IntVec3, IntVec3, int) currentPathContent = (IntVec3.Invalid, IntVec3.Invalid, 0);
+            if (pathIsValid)
+            {
+                currentPathContent = (currentPath.FirstNode, currentPath.LastNode, currentPath.NodesLeftCount);
+            }
+
+            // Get the last synced content from our cache
+            lastPathContentCache.TryGetValue(pawnId, out var lastSentContent);
+
+            // === CONTENT CHECK ===
+            // Only sync if the path content is actually different
+            if (currentPathContent != lastSentContent)
+            {
+                // Update caches
+                lastPathSyncTick[pawnId] = GenTicks.TicksGame;
+                lastPathContentCache[pawnId] = currentPathContent;
+
+                // The manual serialization from before was correct. Let's reuse it.
+                int totalCost = pathIsValid ? (int)currentPath.TotalCost : 0;
                 int[] nodes = null;
-                if (isValid)
+                if (pathIsValid)
                 {
                     var nodeList = currentPath.NodesReversed;
                     nodes = new int[nodeList.Count * 2];
@@ -132,8 +154,8 @@ namespace Multiplayer.Client
                     }
                 }
 
-                // Call the new, simplified SyncMethod
-                SyncedActions.SetPawnPath(pawn, isValid, totalCost, nodes);
+                MpTrace.Info($"Host detected MEANINGFULLY new path for {pawn.LabelShortCap}. Sending sync.");
+                SyncedActions.SetPawnPath(pawn, pathIsValid, totalCost, nodes);
             }
         }
 

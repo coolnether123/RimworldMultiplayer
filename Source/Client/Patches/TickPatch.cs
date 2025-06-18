@@ -226,12 +226,11 @@ namespace Multiplayer.Client
             worked = false;
             updateTimer.Restart();
 
-            // Run commands once per frame, unconditionally.
+            // Run commands once per frame, unconditionally. This is the core fix.
             if (RunCmds()) return;
 
             while (Simulating ? (Timer < simulating.target && updateTimer.ElapsedMilliseconds < 25) : (ticksToRun > 0))
             {
-                // Inside the loop, we only need to DoTick. RunCmds is already handled.
                 if (DoTick(ref worked)) return;
             }
         }
@@ -262,10 +261,6 @@ namespace Multiplayer.Client
             }
 
             ConstantTicker.Tick();
-
-            // The visual update logic for non-active maps is also removed.
-            // The main TickTickable loop should handle this correctly now that commands are processed.
-            // If it doesn't, we will re-evaluate, but for now, simplicity is key.
 
             Timer++;
             ticksToRun--;
