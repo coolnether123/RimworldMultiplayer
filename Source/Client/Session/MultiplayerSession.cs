@@ -218,8 +218,8 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
-            // === STEP 4: LOG SCHEDULING ATTEMPT ===
-            MpTrace.Info($"ScheduleCommand (MultiplayerSession): Scheduling command {cmd.type} for tick {cmd.ticks}.");
+            // This initial log is important to see that the method is being called for Sync commands.
+            MpTrace.Info($"ScheduleCommand (MultiplayerSession): Received command {cmd.type} for tick {cmd.ticks} targeting mapId {cmd.mapId}.");
 
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
 
@@ -232,7 +232,7 @@ namespace Multiplayer.Client
             if (cmd.mapId == ScheduledCommand.Global)
             {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
-                MpTrace.Info("--> Queued command in AsyncWorldTimeComp.");
+                MpTrace.Info("--> Queued GLOBAL command in AsyncWorldTimeComp.");
             }
             else
             {
@@ -240,11 +240,12 @@ namespace Multiplayer.Client
                 if (map != null)
                 {
                     map.AsyncTime().cmds.Enqueue(cmd);
-                    MpTrace.Info($"--> Queued command in AsyncTimeComp for map {cmd.mapId}.");
+                    MpTrace.Info($"--> Queued MAP command in AsyncTimeComp for map {cmd.mapId}.");
                 }
                 else
                 {
-                    MpTrace.Warning($"--> Could not find map with id {cmd.mapId} to queue command.");
+                    // THIS IS THE CRITICAL LOG. IF THIS APPEARS, WE'VE FOUND THE BUG.
+                    MpTrace.Error($"!!!!!! FAILED TO QUEUE COMMAND. Could not find map with id {cmd.mapId} to queue command {cmd.type}. The command will be dropped. !!!!!!");
                 }
             }
         }
