@@ -16,6 +16,9 @@ namespace Multiplayer.Client
 {
     public class MultiplayerSession : IConnectionStatusListener
     {
+
+        public Dictionary<int, List<ScheduledCommand>> bufferedCommands = new Dictionary<int, List<ScheduledCommand>>();
+
         public string gameName;
         public int playerId;
 
@@ -218,7 +221,6 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
-            // This initial log is important to see that the method is being called for Sync commands.
             MpTrace.Info($"ScheduleCommand (MultiplayerSession): Received command {cmd.type} for tick {cmd.ticks} targeting mapId {cmd.mapId}.");
 
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
@@ -237,15 +239,20 @@ namespace Multiplayer.Client
             else
             {
                 Map map = cmd.GetMap();
-                if (map != null)
+                if (map != null && map.AsyncTime() != null)
                 {
                     map.AsyncTime().cmds.Enqueue(cmd);
                     MpTrace.Info($"--> Queued MAP command in AsyncTimeComp for map {cmd.mapId}.");
                 }
                 else
                 {
-                    // THIS IS THE CRITICAL LOG. IF THIS APPEARS, WE'VE FOUND THE BUG.
-                    MpTrace.Error($"!!!!!! FAILED TO QUEUE COMMAND. Could not find map with id {cmd.mapId} to queue command {cmd.type}. The command will be dropped. !!!!!!");
+                    // Instead of erroring, we buffer the command.
+                    if (!bufferedCommands.ContainsKey(cmd.mapId))
+                    {
+                        bufferedCommands[cmd.mapId] = new List<ScheduledCommand>();
+                    }
+                    bufferedCommands[cmd.mapId].Add(cmd);
+                    MpTrace.Warning($"--> Map {cmd.mapId} not ready. Buffering command {cmd.type}.");
                 }
             }
         }
