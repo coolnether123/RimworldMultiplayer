@@ -1,5 +1,3 @@
-// File: Source/Client/Syncing/PathingSync.cs
-
 using HarmonyLib;
 using Multiplayer.API;
 using RimWorld;
@@ -12,17 +10,37 @@ using Verse.AI;
 namespace Multiplayer.Client
 {
     //############################################################################
-    // SECTION 1: INITIALIZATION & PATCH APPLYING
+    // SECTION 1: INITIALIZATION & REGISTRATION
     //############################################################################
 
     [StaticConstructorOnStartup]
-    public static class PathingSyncInit
+    static class PathingSyncInit
     {
         static PathingSyncInit()
         {
             if (!MP.enabled) return;            // Skip in single-player
-            MP.RegisterAll();                    // Discover all [SyncMethod] & [SyncWorker]
+
+            // Apply all Harmony patches in this assembly
             new Harmony("coolnether123.pathingsync").PatchAll();
+
+            // Register SyncWorkers manually to avoid signature mismatches
+            MP.RegisterSyncWorker<JobParams>(
+                (SyncWorker sync, ref JobParams jp) =>
+                {
+                    if (!sync.isWriting)
+                        jp = new JobParams();
+                    jp.Sync(sync);
+                }
+            );
+
+            MP.RegisterSyncWorker<PawnPathSurrogate>(
+                (SyncWorker sync, ref PawnPathSurrogate ps) =>
+                {
+                    if (!sync.isWriting)
+                        ps = new PawnPathSurrogate();
+                    ps.Sync(sync);
+                }
+            );
         }
     }
 
@@ -31,10 +49,7 @@ namespace Multiplayer.Client
     //############################################################################
 
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
-    [HarmonyPatch(new[]
-    {
-        typeof(Job), typeof(JobCondition), typeof(ThinkNode), typeof(bool)
-    })]
+    [HarmonyPatch(new[] { typeof(Job), typeof(JobCondition), typeof(ThinkNode), typeof(bool) })]
     static class Pawn_JobTracker_StartJob_Patch
     {
         static bool Prefix(Pawn_JobTracker __instance,
@@ -43,10 +58,8 @@ namespace Multiplayer.Client
                            ThinkNode jobGiver,
                            bool _resume)
         {
-            // Allow if coming from a synced action
             if (PathingPatches.InSyncAction > 0) return true;
 
-            // Block AI jobs on pure clients
             if (Multiplayer.Client != null &&
                 Multiplayer.LocalServer == null &&
                 jobGiver != null)
@@ -68,11 +81,12 @@ namespace Multiplayer.Client
 
     [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob))]
     [HarmonyPatch(new[] { typeof(Job), typeof(JobTag?) })]
-    static class Pawn_JobTracker_TryTakeOrderedJob_Patch
+    static class Pawn_JobTracker_TakeOrderedJob_Patch
     {
         static bool Prefix(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
-            if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
+            if (Multiplayer.Client == null || !Multiplayer.ShouldSync)
+                return true;
             SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
             return false;
         }
@@ -93,9 +107,9 @@ namespace Multiplayer.Client
                 return;
 
             PawnPath p = __instance.curPath;
-            var content = (p is { Found: true }
+            var content = p is { Found: true }
                 ? (p.FirstNode, p.LastNode, p.NodesLeftCount)
-                : (IntVec3.Invalid, IntVec3.Invalid, 0));
+                : (IntVec3.Invalid, IntVec3.Invalid, 0);
 
             if (PathingPatches.lastContentCache.TryGetValue(id, out var prev) &&
                 prev.Equals(content))
@@ -104,7 +118,6 @@ namespace Multiplayer.Client
             PathingPatches.lastContentCache[id] = content;
             PathingPatches.lastSyncTick[id] = GenTicks.TicksGame;
 
-            // Send the full surrogate path
             SyncedActions.SetPawnPath(pawn, new PawnPathSurrogate(p));
         }
     }
@@ -130,7 +143,7 @@ namespace Multiplayer.Client
     }
 
     //############################################################################
-    // SECTION 3: PATCH IMPLEMENTATIONS & CACHES
+    // SECTION 3: SHARED STATE
     //############################################################################
 
     public static class PathingPatches
@@ -243,7 +256,6 @@ namespace Multiplayer.Client
         private int totalCost;
 
         public PawnPathSurrogate() { }
-
         public PawnPathSurrogate(PawnPath path)
         {
             if (path == null || !path.Found)
@@ -251,7 +263,6 @@ namespace Multiplayer.Client
                 isValid = false;
                 return;
             }
-
             isValid = true;
             totalCost = (int)path.TotalCost;
             nodes = new List<IntVec3>(path.NodesReversed);
@@ -287,11 +298,7 @@ namespace Multiplayer.Client
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
             if (Multiplayer.LocalServer != null) return;
-            try
-            {
-                PathingPatches.InSyncAction++;
-                pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced, null, false);
-            }
+            try { PathingPatches.InSyncAction++; pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced); }
             finally { PathingPatches.InSyncAction--; }
         }
 
@@ -299,11 +306,7 @@ namespace Multiplayer.Client
         public static void TakeOrderedJob(Pawn pawn, JobParams prms, JobTag? tag)
         {
             if (Multiplayer.LocalServer != null) return;
-            try
-            {
-                PathingPatches.InSyncAction++;
-                pawn.jobs.TryTakeOrderedJob(prms.ToJob(), tag);
-            }
+            try { PathingPatches.InSyncAction++; pawn.jobs.TryTakeOrderedJob(prms.ToJob(), tag); }
             finally { PathingPatches.InSyncAction--; }
         }
 
@@ -314,8 +317,7 @@ namespace Multiplayer.Client
             var pf = pawn.pather;
             pf.curPath?.ReleaseToPool();
             pf.curPath = surr.ToPawnPath(pawn);
-            if (pf.curPath.Found) pf.ResetToCurrentPosition();
-            else pf.PatherFailed();
+            if (pf.curPath.Found) pf.ResetToCurrentPosition(); else pf.PatherFailed();
         }
     }
 }
