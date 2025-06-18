@@ -45,12 +45,27 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
+            // First, get a copy of the entire packet's remaining data.
+            // data.Left gives us the number of unread bytes.
+            byte[] rawData = data.ReadRaw(data.Left);
+
+            // Now, create a reader from this copy just for peeking.
+            var peekReader = new ByteReader(rawData);
+            CommandType peekedType = (CommandType)peekReader.ReadInt32();
+
+            // Log the type we are about to process.
+            MpTrace.Info($"HandleCommand: Received Server_Command. About to process packet of type: {peekedType}.");
+
+            ScheduledCommand cmd = null;
             try
             {
-                // Now we only need to deserialize. The issuedBySelf flag is handled internally.
-                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
+                // Create another new reader from the same raw data for the actual deserialization.
+                var processingReader = new ByteReader(rawData);
 
-                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
+                cmd = ScheduledCommand.Deserialize(processingReader);
+                cmd.issuedBySelf = processingReader.ReadBool();
+
+                MpTrace.Info($"--> HandleCommand: SUCCESSFULLY DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}.");
 
                 Session.ScheduleCommand(cmd);
                 Multiplayer.session.receivedCmds++;
@@ -58,7 +73,8 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
+                // If this log appears, we have found the exact point of failure.
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during deserialization of {peekedType}. Command dropped. Exception: {e}");
             }
         }
 

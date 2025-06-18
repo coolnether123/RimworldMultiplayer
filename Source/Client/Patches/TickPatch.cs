@@ -207,10 +207,6 @@ namespace Multiplayer.Client
 
         private static bool RunCmds()
         {
-            if (AllTickables.Any(t => t.Cmds.Count > 0 && t.Cmds.Peek().ticks == Timer))
-            {
-                MpTrace.Info($"-- RunCmds: Commands are available for current Timer: {Timer} --");
-            }
 
             int curTimer = Timer;
             foreach (ITickable tickable in AllTickables)
