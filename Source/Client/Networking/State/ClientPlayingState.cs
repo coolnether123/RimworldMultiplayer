@@ -45,19 +45,28 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Command)]
         public void HandleCommand(ByteReader data)
         {
-            // === STEP 3: LOG PACKET HANDLER INVOCATION ===
-            MpTrace.Info("HandleCommand (ClientPlayingState): Received Server_Command packet.");
+            ScheduledCommand cmd = null;
+            try
+            {
+                // Log BEFORE deserialization
+                MpTrace.Info($"HandleCommand: Received Server_Command packet. Preparing to deserialize.");
 
-            ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
-            cmd.issuedBySelf = data.ReadBool();
+                cmd = ScheduledCommand.Deserialize(data);
+                cmd.issuedBySelf = data.ReadBool();
 
-            MpTrace.Info($"--> Parsed command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
+                // Log AFTER successful deserialization
+                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
 
-            Session.ScheduleCommand(cmd);
-            MpTrace.Info("--> Command successfully scheduled in MultiplayerSession.");
+                Session.ScheduleCommand(cmd);
 
-            Multiplayer.session.receivedCmds++;
-            Multiplayer.session.ProcessTimeControl();
+                Multiplayer.session.receivedCmds++;
+                Multiplayer.session.ProcessTimeControl();
+            }
+            catch (Exception e)
+            {
+                // If this log appears, we have found the exact point of failure.
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
+            }
         }
 
         [PacketHandler(Packets.Server_PlayerList)]

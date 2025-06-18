@@ -238,13 +238,11 @@ namespace Multiplayer.Client
             }
         }
 
-        // Returns whether the tick loop should stop
         public static bool DoTick(ref bool worked)
         {
             tickTimer.Restart();
 
             // First, process commands for the current tick for ALL tickables.
-            // This is crucial and must happen before the timer increments.
             if (RunCmds()) return true;
 
             // Now, tick the simulation for any unpaused tickables.
@@ -259,7 +257,7 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
-            //TESTING 6/17/2025
+            // Refined block for visual updates on non-active maps
             if (Multiplayer.Client != null && Find.CurrentMap != null)
             {
                 List<Map> maps = Find.Maps;
@@ -268,14 +266,17 @@ namespace Multiplayer.Client
                     Map map = maps[i];
                     if (map != Find.CurrentMap)
                     {
-                        // We only need to tick the pathers, not the full pawn AI.
-                        // PatherTick updates the drawer/tweener for smooth movement.
-                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
-                        foreach (Pawn pawn in pawnsOnMap)
+                        var asyncTime = map.AsyncTime();
+                        // Only run this for PAUSED maps, as unpaused maps are already handled by the main loop.
+                        if (asyncTime != null && asyncTime.TimePerTick(asyncTime.DesiredTimeSpeed) == 0)
                         {
-                            if (pawn != null && pawn.Spawned && pawn.pather != null)
+                            List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
+                            foreach (Pawn pawn in pawnsOnMap)
                             {
-                                pawn.pather.PatherTick();
+                                if (pawn != null && pawn.Spawned && pawn.pather != null)
+                                {
+                                    pawn.pather.PatherTick();
+                                }
                             }
                         }
                     }

@@ -139,12 +139,17 @@ namespace Multiplayer.Client
     public class JobParams : ISynchronizable
     {
         public JobDef def;
+
+        
         public LocalTargetInfo targetA;
+        /* Removing for testing should still need
         public LocalTargetInfo targetB;
         public LocalTargetInfo targetC;
         public List<LocalTargetInfo> targetQueueA;
         public List<LocalTargetInfo> targetQueueB;
         public int count = -1;
+        */
+
         // public bool playerForced; // Temporarily disable
         // public bool canBashDoors; // Temporarily disable
         // public bool canBashFences; // Temporarily disable
@@ -162,11 +167,14 @@ namespace Multiplayer.Client
         {
             def = job.def;
             targetA = job.targetA;
+            /* Removing for testing should still need
             targetB = job.targetB;
             targetC = job.targetC;
             targetQueueA = job.targetQueueA?.ToList();
             targetQueueB = job.targetQueueB?.ToList();
             count = job.count;
+            */
+
             // playerForced = job.playerForced;
             // canBashDoors = job.canBashDoors;
             // canBashFences = job.canBashFences;
@@ -186,11 +194,15 @@ namespace Multiplayer.Client
         {
             Job job = JobMaker.MakeJob(def);
             job.targetA = targetA;
+
+            /* Removing for testing should still need
             job.targetB = targetB;
             job.targetC = targetC;
             job.targetQueueA = targetQueueA;
             job.targetQueueB = targetQueueB;
             job.count = count;
+            */
+
             // job.playerForced = playerForced;
             // job.canBashDoors = canBashDoors;
             // job.canBashFences = canBashFences;
@@ -214,11 +226,15 @@ namespace Multiplayer.Client
         {
             worker.Bind(ref def);
             worker.Bind(ref targetA);
+
+            /* Removing for testing should still need
             worker.Bind(ref targetB);
             worker.Bind(ref targetC);
             worker.Bind(ref targetQueueA);
             worker.Bind(ref targetQueueB);
             worker.Bind(ref count);
+            */
+
             // worker.Bind(ref playerForced);
             // worker.Bind(ref canBashDoors);
             // worker.Bind(ref canBashFences);

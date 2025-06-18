@@ -221,40 +221,20 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
-            // This initial log is important to see that the method is being called for Sync commands.
-            MpTrace.Info($"ScheduleCommand (MultiplayerSession): Received command {cmd.type} for tick {cmd.ticks} targeting mapId {cmd.mapId}.");
-
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
-
-            if (Current.ProgramState != ProgramState.Playing)
-            {
-                MpTrace.Warning("--> Current.ProgramState is not 'Playing'. Command will be added to snapshot but not queued for immediate execution.");
-                return;
-            }
+            if (Current.ProgramState != ProgramState.Playing) return;
 
             if (cmd.mapId == ScheduledCommand.Global)
             {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
-                MpTrace.Info("--> Queued GLOBAL command in AsyncWorldTimeComp.");
             }
             else
             {
                 Map map = cmd.GetMap();
                 if (map != null && map.AsyncTime() != null)
-                {
                     map.AsyncTime().cmds.Enqueue(cmd);
-                    MpTrace.Info($"--> Queued MAP command in AsyncTimeComp for map {cmd.mapId}.");
-                }
                 else
-                {
-                    // Instead of erroring, we buffer the command.
-                    if (!bufferedCommands.ContainsKey(cmd.mapId))
-                    {
-                        bufferedCommands[cmd.mapId] = new List<ScheduledCommand>();
-                    }
-                    bufferedCommands[cmd.mapId].Add(cmd);
-                    MpTrace.Warning($"--> Map {cmd.mapId} not ready. Buffering command {cmd.type}.");
-                }
+                    Multiplayer.session.bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
             }
         }
 
