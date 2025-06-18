@@ -257,6 +257,30 @@ namespace Multiplayer.Client
 
             ConstantTicker.Tick();
 
+            if (Multiplayer.Client != null && Find.CurrentMap != null)
+            {
+                List<Map> maps = Find.Maps;
+                for (int i = 0; i < maps.Count; i++)
+                {
+                    Map map = maps[i];
+                    // Only tick pathers on maps that are not being viewed.
+                    // The main game loop handles the current map.
+                    if (map != Find.CurrentMap)
+                    {
+                        // Use a temporary list to prevent collection modification errors.
+                        List<Pawn> pawnsOnMap = new List<Pawn>(map.mapPawns.AllPawnsSpawned);
+                        foreach (Pawn pawn in pawnsOnMap)
+                        {
+                            if (pawn.pather != null)
+                            {
+                                // This specific call updates the pawn's visual position.
+                                // It does NOT run AI logic and is safe to call.
+                                pawn.pather.PatherTick();
+                            }
+                        }
+                    }
+                }
+            }
 
             Timer++;
             ticksToRun--;
