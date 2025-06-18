@@ -77,6 +77,14 @@ namespace Multiplayer.Client
 
         static bool Prefix()
         {
+            if (Multiplayer.Client != null && !Multiplayer.IsReplay)
+            {
+                // Use a less spammy way to log this
+                if (Find.TickManager.TicksGame % 60 == 0)
+                {
+                    MpTrace.Info($"TickPatch.Prefix invoked. Timer: {Timer}, TicksToRun: {ticksToRun}, ShouldHandle: {ShouldHandle}");
+                }
+            }
             if (Multiplayer.Client == null) return true;
 
             // This is the definitive fix for all post-load issues.
@@ -199,6 +207,11 @@ namespace Multiplayer.Client
 
         private static bool RunCmds()
         {
+            if (AllTickables.Any(t => t.Cmds.Count > 0 && t.Cmds.Peek().ticks == Timer))
+            {
+                MpTrace.Info($"-- RunCmds: Commands are available for current Timer: {Timer} --");
+            }
+
             int curTimer = Timer;
             foreach (ITickable tickable in AllTickables)
             {
@@ -240,6 +253,9 @@ namespace Multiplayer.Client
 
         public static bool DoTick(ref bool worked)
         {
+
+            MpTrace.Info($"-- DoTick START for Timer: {Timer} --");
+
             tickTimer.Restart();
 
             // First, process commands for the current tick for ALL tickables.
@@ -332,6 +348,15 @@ namespace Multiplayer.Client
         private static void TryProcessBufferedCommands()
         {
             var session = Multiplayer.session;
+            if (session.bufferedCommands.Count > 0)
+            {
+                // === NEW LOGGING ===
+                MpTrace.Info($"-- TryProcessBufferedCommands: Buffer has {session.bufferedCommands.Sum(kv => kv.Value.Count)} items. Checking maps... --");
+            }
+            else
+            {
+                return;
+            }
             if (session.bufferedCommands.Count == 0) return;
 
             // Use a temporary list to avoid modifying the collection while iterating
