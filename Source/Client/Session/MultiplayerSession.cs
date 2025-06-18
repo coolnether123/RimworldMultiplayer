@@ -221,6 +221,8 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
+            MpTrace.Info($"ScheduleCommand: Received {cmd.type} for mapId {cmd.mapId}, tick {cmd.ticks}.");
+
             dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
             if (Current.ProgramState != ProgramState.Playing) return;
 
@@ -231,10 +233,18 @@ namespace Multiplayer.Client
             else
             {
                 Map map = cmd.GetMap();
-                if (map != null && map.AsyncTime() != null)
-                    map.AsyncTime().cmds.Enqueue(cmd);
+                var asyncTime = map?.AsyncTime();
+
+                if (map != null && asyncTime != null)
+                {
+                    asyncTime.cmds.Enqueue(cmd);
+                }
                 else
-                    Multiplayer.session.bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                {
+                    // Map isn't ready, so buffer the command.
+                    MpTrace.Warning($"Map {cmd.mapId} not ready, buffering command {cmd.type}.");
+                    bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                }
             }
         }
 

@@ -49,13 +49,13 @@ namespace Multiplayer.Client
             try
             {
                 // Log BEFORE deserialization
-                MpTrace.Info($"HandleCommand: Received Server_Command packet. Preparing to deserialize.");
+                //MpTrace.Info($"HandleCommand: Received Server_Command packet. Preparing to deserialize.");
 
                 cmd = ScheduledCommand.Deserialize(data);
                 cmd.issuedBySelf = data.ReadBool();
 
                 // Log AFTER successful deserialization
-                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
+                //MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, Target Map: {cmd.mapId}, For Tick: {cmd.ticks}.");
 
                 Session.ScheduleCommand(cmd);
 
@@ -64,7 +64,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
-                // If this log appears, we have found the exact point of failure.
+   
                 MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
             }
         }
