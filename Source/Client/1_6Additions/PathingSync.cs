@@ -316,8 +316,11 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
-            MpTrace.Info($"[StartJob-Recv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
-               + $"pawn={pawn} job={prms.def.defName} isValidJob={prms.def != null}");
+            // still inside StartJobAI *prefix* or Postfix_StartJob
+            bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
+            if (isClient)
+                MpTrace.Info($"[Wire-A] SEND  map={pawn.Map.uniqueID}  pawn={pawn}  job={prms.def.defName}");
+
 
             if (Multiplayer.LocalServer != null) return;
             try { PathingPatches.InSyncAction++; pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced); }

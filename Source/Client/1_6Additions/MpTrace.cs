@@ -12,6 +12,8 @@ namespace Multiplayer.Client
     {
         private static bool IsHost => Multiplayer.LocalServer != null;
         private static string Side => IsHost ? "[HOST]" : "[CLIENT]";
+        internal static bool IsPlayableColonist(Pawn p)
+    => p != null && p.IsColonist && !p.Dead && p.Faction?.IsPlayer == true;
 
         /// <summary>Logs a message only if Sync Tracing is enabled. Use this for high-frequency events.</summary>
         public static void Verbose(string message)
