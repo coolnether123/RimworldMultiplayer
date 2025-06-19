@@ -68,9 +68,9 @@ namespace Multiplayer.Client
     {
         static void Postfix(Pawn_PathFollower __instance)
         {
-            bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
-            if (isClient)
-                MpTrace.Verbose($"[Trace-TickProbe] pawn={__instance.pawn} dest={__instance.Destination}");
+            //bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
+            //if (isClient)
+            //    MpTrace.Verbose($"[Trace-TickProbe] pawn={__instance.pawn} dest={__instance.Destination}");
         }
     }
 
@@ -96,10 +96,18 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, Job newJob)
         {
-            if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
+            // TEMP: Log ALL jobs to see what we're missing
+            if (Multiplayer.LocalServer != null && newJob != null)
             {
-                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                MpTrace.Info($"[StartJob-All] pawn={__instance.pawn} job={newJob.def.defName} " +
+                            $"hasJobGiver={newJob.jobGiver != null} playerForced={newJob.playerForced}");
+
+                // Only sync NON-player jobs (AI behavior)
+                if (newJob.jobGiver == null && !newJob.playerForced)
+                {
+                    MpTrace.Info($"[StartJob-Host] will SYNC AI job ({newJob.def.defName}) for {__instance.pawn}");
+                    SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                }
             }
         }
 
@@ -118,13 +126,13 @@ namespace Multiplayer.Client
             if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
 
             var p = __instance.curPath;
-            if (p is { Found: true })
-            {
-                MpTrace.Verbose($"[PathSend] {__instance.pawn} "
-                    + $"First={p.FirstNode}  Last={p.LastNode}  Left={p.NodesLeftCount}");
-            }
-            else
-                MpTrace.Verbose($"[PathSend] {__instance.pawn} NO PATH – skipped");
+            //if (p is { Found: true })
+            //{
+            //    MpTrace.Verbose($"[PathSend] {__instance.pawn} "
+            //        + $"First={p.FirstNode}  Last={p.LastNode}  Left={p.NodesLeftCount}");
+            //}
+            //else
+            //    MpTrace.Verbose($"[PathSend] {__instance.pawn} NO PATH – skipped");
             var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
 
             if (lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
@@ -317,9 +325,9 @@ namespace Multiplayer.Client
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
             // still inside StartJobAI *prefix* or Postfix_StartJob
-            bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
-            if (isClient)
-                MpTrace.Info($"[Wire-A] SEND  map={pawn.Map.uniqueID}  pawn={pawn}  job={prms.def.defName}");
+            //bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
+            //if (isClient)
+            //    MpTrace.Info($"[Wire-A] SEND  map={pawn.Map.uniqueID}  pawn={pawn}  job={prms.def.defName}");
 
 
             if (Multiplayer.LocalServer != null) return;
@@ -338,8 +346,8 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
-            MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
-               + $"pawn={pawn} surrogateValid={surr.isValid}");
+            //MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
+            //   + $"pawn={pawn} surrogateValid={surr.isValid}");
 
             if (Multiplayer.LocalServer != null || pawn?.pather == null) return;
             var pf = pawn.pather;
