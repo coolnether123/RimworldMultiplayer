@@ -75,6 +75,21 @@ namespace Multiplayer.Client
         }
     }
 
+    [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
+    static class AllowClientPatherTick
+    {
+        static bool Prefix(Pawn_PathFollower __instance)
+        {
+            // Allow PatherTick on clients for animation, but block path requests
+            if (Multiplayer.Client != null && Multiplayer.LocalServer == null)
+            {
+                MpTrace.Verbose($"[Client-PatherTick] {__instance.pawn} animating");
+                return true; // Let it run for animation
+            }
+            return true; // Always allow on host
+        }
+    }
+
     //############################################################################
     // SECTION 2: THE PATCH IMPLEMENTATIONS
     //############################################################################
@@ -122,14 +137,18 @@ namespace Multiplayer.Client
 
             if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
-            MpTrace.Info($"[PatherTick-AfterEarlyReturn] {__instance.pawn} - This should appear if early return doesn't fire");
+            MpTrace.Info($"[PatherTick-AfterEarlyReturn] {__instance.pawn}");
+
+            var p = __instance.curPath;
+            MpTrace.Info($"[PathSend-About-To-Call] {__instance.pawn} pathValid={p?.Found} " +
+                         $"willSendPath={p is { Found: true }}");
 
             if (__instance.pawn.Drafted) return; // Skip your original filter
             int id = __instance.pawn.thingIDNumber;
 
             if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
 
-            var p = __instance.curPath;
+
             //if (p is { Found: true })
             //{
             //    MpTrace.Verbose($"[PathSend] {__instance.pawn} "
@@ -143,6 +162,9 @@ namespace Multiplayer.Client
 
             lastContentCache[id] = content;
             lastSyncTick[id] = GenTicks.TicksGame;
+
+            MpTrace.Info($"[PathSend-Calling-Now] {__instance.pawn}");
+
             SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
         }
 
