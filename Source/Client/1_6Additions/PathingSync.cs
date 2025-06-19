@@ -361,10 +361,25 @@ namespace Multiplayer.Client
             bool isHost = Multiplayer.LocalServer != null;
             bool inMultiplayer = MP.IsInMultiplayer;
             bool shouldSync = Multiplayer.ShouldSync;
-            bool executingCmds = Multiplayer.ExecutingCmds;
+            if (!shouldSync && isHost)
+            {
+                // Debug the internal conditions
+                bool dontSync = Multiplayer.dontSync;
+                bool executingCmds = Multiplayer.ExecutingCmds;
+                bool inInterface = Multiplayer.InInterface;
 
-            MpTrace.Info($"[TestSync-State] side={(isHost ? "HOST" : "CLIENT")} inMP={inMultiplayer} " +
-                        $"shouldSync={shouldSync} executingCmds={executingCmds} inSyncAction={PathingPatches.InSyncAction}");
+                MpTrace.Info($"[ShouldSync-Debug] dontSync={dontSync} executingCmds={executingCmds} inInterface={inInterface}");
+            }
+
+            // ADD THESE DETAILED CHECKS:
+            bool isPlaying = Current.ProgramState == ProgramState.Playing;
+            bool gameInitialized = Current.Game != null;
+            bool hasActiveMap = Find.CurrentMap != null;
+            bool isPaused = Find.TickManager.Paused;
+
+            MpTrace.Info($"[TestSync-Detailed] side={(isHost ? "HOST" : "CLIENT")} " +
+                        $"shouldSync={shouldSync} isPlaying={isPlaying} gameInit={gameInitialized} " +
+                        $"hasMap={hasActiveMap} isPaused={isPaused}");
 
             MpTrace.Info($"[TestSync] side={(isHost ? "HOST" : "CLIENT")} message={message}");
         }
