@@ -108,7 +108,8 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
-                //MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+                SyncedActions.MinimalTest(); // Test sync when job starts
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
             }
         }
@@ -122,7 +123,6 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            SyncedActions.MinimalTest();
 
             // DEBUG: Check why the early return is happening
             bool isHost = Multiplayer.LocalServer != null;
