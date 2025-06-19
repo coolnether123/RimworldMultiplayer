@@ -96,18 +96,10 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, Job newJob)
         {
-            // TEMP: Log ALL jobs to see what we're missing
-            if (Multiplayer.LocalServer != null && newJob != null)
+            if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
-                MpTrace.Info($"[StartJob-All] pawn={__instance.pawn} job={newJob.def.defName} " +
-                            $"hasJobGiver={newJob.jobGiver != null} playerForced={newJob.playerForced}");
-
-                // Only sync NON-player jobs (AI behavior)
-                if (newJob.jobGiver == null && !newJob.playerForced)
-                {
-                    MpTrace.Info($"[StartJob-Host] will SYNC AI job ({newJob.def.defName}) for {__instance.pawn}");
-                    SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
-                }
+                //MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
             }
         }
 
@@ -120,7 +112,13 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned || __instance.pawn.Drafted) return;
+            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
+
+            // DEBUG: Always log what we see
+            MpTrace.Verbose($"[PathDebug] {__instance.pawn} drafted={__instance.pawn.Drafted} " +
+                           $"pathFound={__instance.curPath?.Found} pathNull={__instance.curPath == null}");
+
+            if (__instance.pawn.Drafted) return; // Skip your original filter
             int id = __instance.pawn.thingIDNumber;
 
             if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
