@@ -110,6 +110,7 @@ public class MultiplayerWorldComp : IHasSessionData
                 MapSetup.InitNewFactionData(map, faction);
             }
         }
+
     }
 
     private void DoBackCompat()

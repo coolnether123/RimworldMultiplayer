@@ -89,12 +89,7 @@ namespace Multiplayer.Client
             {
                 MultiplayerData.CollectDefInfos();
                 Sync.PostInitHandlers();
-            }, "Loading");
-
-            LongEventHandler.ExecuteWhenFinished(() => {
-                HandleRestartConnect();
-                HandleCommandLine();
-            });
+            }, "Loading"); // Right before the events from HandleCommandLine
 
             HandleRestartConnect();
             HandleCommandLine();
@@ -145,12 +140,7 @@ namespace Multiplayer.Client
         private static void HandleRestartConnect()
         {
             if (Multiplayer.restartConnect == null)
-            {
-                Log.Message("[Multiplayer] HandleRestartConnect: restartConnect is null. Skipping.");
                 return;
-            }
-
-            Log.Warning($"[Multiplayer] HandleRestartConnect: restartConnect has value: '{Multiplayer.restartConnect}'. Attempting auto-connect.");
 
             // No colon means the connect string is a steam user id
             if (!Multiplayer.restartConnect.Contains(':'))
@@ -227,7 +217,7 @@ namespace Multiplayer.Client
                                         void Log(string text) => output += text + "\n";
 
                                         Log($"Ticks done: {ticksDone}");
-                                        Log($"TPS: {1000.0/(timeSpent / ticksDone)}");
+                                        Log($"TPS: {1000.0 / (timeSpent / ticksDone)}");
                                         Log($"Timer: {TickPatch.Timer}");
                                         Log($"World: {Multiplayer.AsyncWorldTime.worldTicks}/{Multiplayer.AsyncWorldTime.randState}");
                                         foreach (var map in Find.Maps)
@@ -284,7 +274,8 @@ namespace Multiplayer.Client
 
             void LogError(string str)
             {
-                if (categoryNeedsAnnouncement) {
+                if (categoryNeedsAnnouncement)
+                {
                     Log.Message($"Multiplayer :: {category}");
                 }
                 Log.Error(str);
@@ -299,7 +290,9 @@ namespace Multiplayer.Client
                 try
                 {
                     harmony.PatchMeasure(original, prefix, postfix, transpiler, finalizer);
-                } catch (Exception e) {
+                }
+                catch (Exception e)
+                {
                     LogError($"FAIL: {original.DeclaringType.FullName}:{original.Name} with {e}");
                 }
             }
@@ -310,9 +303,12 @@ namespace Multiplayer.Client
                 // EarlyPatches are handled in MultiplayerMod.EarlyPatches
                 if (type.IsDefined(typeof(EarlyPatchAttribute))) return;
 
-                try {
+                try
+                {
                     harmony.CreateClassProcessor(type).Patch();
-                } catch (Exception e) {
+                }
+                catch (Exception e)
+                {
                     LogError($"FAIL: {type} with {e}");
                 }
             });
@@ -462,4 +458,3 @@ namespace Multiplayer.Client
     }
 
 }
-

@@ -101,7 +101,7 @@ namespace Multiplayer.Client
                 }
 
                 // Reset the tick controller to a clean state.
-                TickPatch.Reset();
+                //TickPatch.Reset();
             }
 
             if (!ShouldHandle) return false;
