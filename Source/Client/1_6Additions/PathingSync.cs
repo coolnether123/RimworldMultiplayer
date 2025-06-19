@@ -122,6 +122,8 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
+            SyncedActions.MinimalTest();
+
             // DEBUG: Check why the early return is happening
             bool isHost = Multiplayer.LocalServer != null;
             bool isSpawned = __instance.pawn.Spawned;
@@ -345,6 +347,13 @@ namespace Multiplayer.Client
 
     public static class SyncedActions
     {
+        [SyncMethod]
+        public static void MinimalTest()
+        {
+            bool isHost = Multiplayer.LocalServer != null;
+            MpTrace.Info($"[MinimalTest] side={(isHost ? "HOST" : "CLIENT")} - BASIC SYNC WORKING");
+        }
+
         [SyncMethod]
         public static void TestSync(string message)
         {
