@@ -129,6 +129,15 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(AreaManager), nameof(AreaManager.TryMakeNewAllowed));
             SyncMethod.Register(typeof(MainTabWindow_Research), nameof(MainTabWindow_Research.DoBeginResearch))
                 .TransformTarget(Serializer.SimpleReader(() => new MainTabWindow_Research()));
+            SyncMethod.Register(typeof(ResearchManager), nameof(ResearchManager.StopProject));
+            // ResearchManager.SetCurrentProject changes the current project and is synced by
+            // MainTabWindow_Research.DoBeginResearch. It will still be called when selecting
+            // "Debug: Finish now". The issue with this is that when triggered by a player who
+            // can't execute debug-only methods it may change the current project to a research
+            // project which cannot be research due to prerequisites, allowing to research them.
+            SyncMethod.Register(typeof(ResearchManager), nameof(ResearchManager.SetCurrentProject)).SetDebugOnly();
+            SyncMethod.Register(typeof(ResearchManager), nameof(ResearchManager.FinishProject)).SetDebugOnly();
+            SyncMethod.Register(typeof(ResearchManager), nameof(ResearchManager.ApplyTechprint)).SetDebugOnly();
 
             SyncMethod.Register(typeof(DrugPolicyDatabase), nameof(DrugPolicyDatabase.MakeNewDrugPolicy));
             SyncMethod.Register(typeof(DrugPolicyDatabase), nameof(DrugPolicyDatabase.TryDelete)).CancelIfAnyArgNull();
