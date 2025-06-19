@@ -55,10 +55,6 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
-            var method = AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick));
-            Log.Message($"[DEBUG] PatherTick method found: {method != null}");
-            if (method != null)
-                Log.Message($"[DEBUG] PatherTick signature: {method}");
 
             // Register SyncWorkers for our custom data types.
             MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
@@ -117,11 +113,16 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            MpTrace.Info($"[PatherTick-RAW] Called for {__instance.pawn}");
+            // DEBUG: Check why the early return is happening
+            bool isHost = Multiplayer.LocalServer != null;
+            bool isSpawned = __instance.pawn.Spawned;
+
+            MpTrace.Info($"[PatherTick-Debug] {__instance.pawn} isHost={isHost} isSpawned={isSpawned} " +
+                        $"map={__instance.pawn.Map?.uniqueID ?? -1}");
 
             if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
-            MpTrace.Verbose($"[PathDebug] {__instance.pawn} drafted={__instance.pawn.Drafted}");
+            MpTrace.Info($"[PatherTick-AfterEarlyReturn] {__instance.pawn} - This should appear if early return doesn't fire");
 
             if (__instance.pawn.Drafted) return; // Skip your original filter
             int id = __instance.pawn.thingIDNumber;
