@@ -56,6 +56,8 @@ namespace Multiplayer.Client
             );
 
 
+
+
             // Register SyncWorkers for our custom data types.
             MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
             MP.RegisterSyncWorker<PawnPathSurrogate>(SyncWorkers.ReadWritePawnPathSurrogate);
@@ -76,6 +78,8 @@ namespace Multiplayer.Client
             return true;
         }
     }
+
+
 
     //############################################################################
     // SECTION 2: THE PATCH IMPLEMENTATIONS
@@ -147,8 +151,11 @@ namespace Multiplayer.Client
             if (contentSame) return;
 
             MpTrace.Info($"[PathSend-Calling-Now] {__instance.pawn}");
+            SyncedActions.TestSync("PathTest"); // ADD THIS LINE
             SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
         }
+
+
 
         public static bool Prefix_SetNewPathRequest() => Multiplayer.Client == null || Multiplayer.LocalServer != null;
 
@@ -177,16 +184,22 @@ namespace Multiplayer.Client
 
     public static class SyncWorkers
     {
+        
+
         public static void ReadWriteJobParams(SyncWorker worker, ref JobParams p)
         {
+            MpTrace.Verbose($"[SyncWorker-JobParams] isWriting={worker.isWriting}");
             if (!worker.isWriting) p = new JobParams();
             p.Sync(worker);
+            MpTrace.Verbose($"[SyncWorker-JobParams] completed successfully");
         }
 
         public static void ReadWritePawnPathSurrogate(SyncWorker worker, ref PawnPathSurrogate p)
         {
+            MpTrace.Verbose($"[SyncWorker-PathSurrogate] isWriting={worker.isWriting}");
             if (!worker.isWriting) p = new PawnPathSurrogate();
             p.Sync(worker);
+            MpTrace.Verbose($"[SyncWorker-PathSurrogate] completed successfully");
         }
     }
 
@@ -329,6 +342,13 @@ namespace Multiplayer.Client
 
     public static class SyncedActions
     {
+        [SyncMethod]
+        public static void TestSync(string message)
+        {
+            bool isHost = Multiplayer.LocalServer != null;
+            MpTrace.Info($"[TestSync] side={(isHost ? "HOST" : "CLIENT")} message={message}");
+        }
+
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
