@@ -7,6 +7,7 @@ using System.Linq;
 using Unity.Collections;
 using Verse;
 using Verse.AI;
+using static Multiplayer.Client.PathingPatches;
 
 namespace Multiplayer.Client
 {
@@ -54,7 +55,10 @@ namespace Multiplayer.Client
                 AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.JobTrackerTickInterval)),
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
-
+            harmony.Patch(
+        AccessTools.Method(typeof(TickManager), nameof(TickManager.TickManagerUpdate)),
+        postfix: new HarmonyMethod(typeof(ProcessPendingSyncs), nameof(ProcessPendingSyncs.Postfix))
+    );
 
 
             // Register SyncWorkers for our custom data types.
@@ -78,7 +82,38 @@ namespace Multiplayer.Client
         }
     }
 
+    // Add this new patch to process pending syncs:
+    [HarmonyPatch(typeof(TickManager), nameof(TickManager.TickManagerUpdate))]
+    public static class ProcessPendingSyncs
+    {
+        public static void Postfix()
+        {
+            if (pendingSyncs?.Count > 0)
+            {
+                for (int i = pendingSyncs.Count - 1; i >= 0; i--)
+                {
+                    var pending = pendingSyncs[i];
+                    if (GenTicks.TicksGame >= pending.executeAtTick)
+                    {
+                        try
+                        {
+                            if (pending.pawn?.Spawned == true)
+                            {
+                                SyncedActions.TestSync("PathTest");
+                                SyncedActions.StartJobAI(pending.pawn, pending.jobParams);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            MpTrace.Error($"[PendingSync] Exception: {e}");
+                        }
 
+                        pendingSyncs.RemoveAt(i);
+                    }
+                }
+            }
+        }
+    }
 
     //############################################################################
     // SECTION 2: THE PATCH IMPLEMENTATIONS
@@ -107,19 +142,32 @@ namespace Multiplayer.Client
                 var pawn = __instance.pawn;
                 var jobParams = new JobParams(newJob);
 
-                MpTrace.Info($"[StartJob-Host] will SYNC (delayed) {pawn} ← {newJob.def.defName}");
+                MpTrace.Info($"[StartJob-Host] will SYNC (next tick) {pawn} ← {newJob.def.defName}");
 
-                // Queue sync for next frame to avoid timing issues
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    if (pawn?.Spawned == true) // Safety check
-                    {
-                        SyncedActions.TestSync("PathTest");
-                        SyncedActions.StartJobAI(pawn, jobParams);
-                    }
-                });
+                // Add to pending sync queue - safer than LongEventHandler
+                if (pendingSyncs == null) pendingSyncs = new List<PendingSync>();
+                pendingSyncs.Add(new PendingSync(pawn, jobParams, GenTicks.TicksGame + 1));
             }
         }
+
+        // Add these to your PathingPatches class:
+        public static List<PendingSync> pendingSyncs;
+
+        public class PendingSync
+        {
+            public Pawn pawn;
+            public JobParams jobParams;
+            public int executeAtTick;
+
+            public PendingSync(Pawn pawn, JobParams jobParams, int executeAtTick)
+            {
+                this.pawn = pawn;
+                this.jobParams = jobParams;
+                this.executeAtTick = executeAtTick;
+            }
+        }
+
+        
 
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
