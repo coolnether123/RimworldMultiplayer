@@ -55,7 +55,10 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
-
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TestSync));
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.SetPawnPath));
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.StartJobAI));
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TakeOrderedJob)); 
 
 
             // Register SyncWorkers for our custom data types.
@@ -349,7 +352,7 @@ namespace Multiplayer.Client
             MpTrace.Info($"[TestSync] side={(isHost ? "HOST" : "CLIENT")} message={message}");
         }
 
-        [SyncMethod(context = SyncContext.CurrentMap)]
+        [SyncMethod] //(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
             bool isHost = Multiplayer.LocalServer != null;
@@ -360,7 +363,7 @@ namespace Multiplayer.Client
             finally { PathingPatches.InSyncAction--; }
         }
 
-        [SyncMethod(context = SyncContext.CurrentMap)]
+        [SyncMethod] //(context = SyncContext.CurrentMap)]
         public static void TakeOrderedJob(Pawn pawn, JobParams prms, JobTag? tag)
         {
             if (Multiplayer.LocalServer != null) return;
@@ -368,7 +371,7 @@ namespace Multiplayer.Client
             finally { PathingPatches.InSyncAction--; }
         }
 
-        [SyncMethod(context = SyncContext.CurrentMap)]
+        [SyncMethod] //(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
             bool isHost = Multiplayer.LocalServer != null;
