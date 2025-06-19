@@ -65,28 +65,16 @@ namespace Multiplayer.Client
     }
 
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
-    static class PatherTick_Probe
-    {
-        static void Postfix(Pawn_PathFollower __instance)
-        {
-            //bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
-            //if (isClient)
-            //    MpTrace.Verbose($"[Trace-TickProbe] pawn={__instance.pawn} dest={__instance.Destination}");
-        }
-    }
-
-    [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
     static class AllowClientPatherTick
     {
         static bool Prefix(Pawn_PathFollower __instance)
         {
-            // Allow PatherTick on clients for animation, but block path requests
-            if (Multiplayer.Client != null && Multiplayer.LocalServer == null)
+            bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
+            if (isClient)
             {
-                MpTrace.Verbose($"[Client-PatherTick] {__instance.pawn} animating");
-                return true; // Let it run for animation
+                MpTrace.Info($"[Client-PatherTick-Prefix] {__instance.pawn} - allowing tick");
             }
-            return true; // Always allow on host
+            return true; // Always allow
         }
     }
 
@@ -146,25 +134,20 @@ namespace Multiplayer.Client
             if (__instance.pawn.Drafted) return; // Skip your original filter
             int id = __instance.pawn.thingIDNumber;
 
-            if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
+            bool hasLastTick = lastSyncTick.TryGetValue(id, out int last);
+            bool tooSoon = hasLastTick && GenTicks.TicksGame < last + 30;
+            MpTrace.Info($"[Throttle-Check] {__instance.pawn} hasLastTick={hasLastTick} tooSoon={tooSoon}");
 
+            if (tooSoon) return;
 
-            //if (p is { Found: true })
-            //{
-            //    MpTrace.Verbose($"[PathSend] {__instance.pawn} "
-            //        + $"First={p.FirstNode}  Last={p.LastNode}  Left={p.NodesLeftCount}");
-            //}
-            //else
-            //    MpTrace.Verbose($"[PathSend] {__instance.pawn} NO PATH – skipped");
             var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
+            bool hasCache = lastContentCache.TryGetValue(id, out var prev);
+            bool contentSame = hasCache && prev.Equals(content);
+            MpTrace.Info($"[Cache-Check] {__instance.pawn} hasCache={hasCache} contentSame={contentSame}");
 
-            if (lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
-
-            lastContentCache[id] = content;
-            lastSyncTick[id] = GenTicks.TicksGame;
+            if (contentSame) return;
 
             MpTrace.Info($"[PathSend-Calling-Now] {__instance.pawn}");
-
             SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
         }
 
@@ -372,8 +355,8 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
-            //MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
-            //   + $"pawn={pawn} surrogateValid={surr.isValid}");
+            MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
+               + $"pawn={pawn} surrogateValid={surr.isValid}");
 
             if (Multiplayer.LocalServer != null || pawn?.pather == null) return;
             var pf = pawn.pather;
