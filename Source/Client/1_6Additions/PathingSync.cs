@@ -108,10 +108,14 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
-                MpTrace.Info($"[StartJob-Host] InSyncAction={InSyncAction} will try to sync");
-                SyncedActions.TestSync("PathTest"); // This should increment Write counter
-                SyncedActions.MinimalTest(); // Test sync when job starts
-                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+
+                // REPLACE DIRECT SYNC CALL WITH DEFERRED CALL:
+                LongEventHandler.ExecuteWhenFinished(() =>
+                {
+                    SyncedActions.TestSync("PathTest");
+                    SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                });
             }
         }
 
