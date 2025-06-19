@@ -55,6 +55,11 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
+            var method = AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick));
+            Log.Message($"[DEBUG] PatherTick method found: {method != null}");
+            if (method != null)
+                Log.Message($"[DEBUG] PatherTick signature: {method}");
+
             // Register SyncWorkers for our custom data types.
             MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
             MP.RegisterSyncWorker<PawnPathSurrogate>(SyncWorkers.ReadWritePawnPathSurrogate);
@@ -112,11 +117,11 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
+            MpTrace.Info($"[PatherTick-RAW] Called for {__instance.pawn}");
+
             if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
 
-            // DEBUG: Always log what we see
-            MpTrace.Verbose($"[PathDebug] {__instance.pawn} drafted={__instance.pawn.Drafted} " +
-                           $"pathFound={__instance.curPath?.Found} pathNull={__instance.curPath == null}");
+            MpTrace.Verbose($"[PathDebug] {__instance.pawn} drafted={__instance.pawn.Drafted}");
 
             if (__instance.pawn.Drafted) return; // Skip your original filter
             int id = __instance.pawn.thingIDNumber;
