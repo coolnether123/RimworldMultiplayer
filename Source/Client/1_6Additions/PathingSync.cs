@@ -55,6 +55,11 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
+            harmony.Patch(
+        AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
+        prefix: new HarmonyMethod(typeof(AllowClientPatherTick), nameof(AllowClientPatherTick.Prefix))
+        );
+
 
             // Register SyncWorkers for our custom data types.
             MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
@@ -65,16 +70,15 @@ namespace Multiplayer.Client
     }
 
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
-    static class AllowClientPatherTick
+    public static class AllowClientPatherTick
     {
-        static bool Prefix(Pawn_PathFollower __instance)
+        public static bool Prefix(Pawn_PathFollower __instance)
         {
             bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
             if (isClient)
-            {
-                MpTrace.Info($"[Client-PatherTick-Prefix] {__instance.pawn} - allowing tick");
-            }
-            return true; // Always allow
+                MpTrace.Verbose($"[Client-PatherTick] animating pawn={__instance.pawn}");
+            // always return true so Tick still runs (but we block path requests elsewhere)
+            return true;
         }
     }
 
@@ -355,8 +359,10 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
-            MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
-               + $"pawn={pawn} surrogateValid={surr.isValid}");
+            bool isHost = Multiplayer.LocalServer != null;
+            int mapId = pawn?.Map?.uniqueID ?? -1;
+            MpTrace.Info($"[PathRecv] side={(isHost ? "HOST" : "CLIENT")} pawn={pawn} " +
+                        $"surrogateValid={surr.isValid} mapId={mapId}");
 
             if (Multiplayer.LocalServer != null || pawn?.pather == null) return;
             var pf = pawn.pather;
