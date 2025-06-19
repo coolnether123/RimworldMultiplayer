@@ -13,7 +13,11 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null) return;
 
+            bool isHost = Multiplayer.LocalServer != null;
             int mapId = __instance.uniqueID;
+            MpTrace.Info($"[MapCheck] side={(isHost ? "HOST" : "CLIENT")} " +
+                         $"currentMapId={mapId}");
+
             var session = Multiplayer.session;
 
             if (session.bufferedCommands.TryGetValue(mapId, out var commandsToQueue))

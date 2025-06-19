@@ -55,11 +55,6 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
-            harmony.Patch(
-        AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
-        prefix: new HarmonyMethod(typeof(AllowClientPatherTick), nameof(AllowClientPatherTick.Prefix))
-        );
-
 
             // Register SyncWorkers for our custom data types.
             MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
@@ -337,11 +332,8 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
-            // still inside StartJobAI *prefix* or Postfix_StartJob
-            //bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
-            //if (isClient)
-            //    MpTrace.Info($"[Wire-A] SEND  map={pawn.Map.uniqueID}  pawn={pawn}  job={prms.def.defName}");
-
+            bool isHost = Multiplayer.LocalServer != null;
+            MpTrace.Info($"[SyncTest-StartJob] side={(isHost ? "HOST" : "CLIENT")} pawn={pawn} job={prms.def.defName}");
 
             if (Multiplayer.LocalServer != null) return;
             try { PathingPatches.InSyncAction++; pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced); }
