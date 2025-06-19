@@ -55,18 +55,9 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
-            try
-            {
-                var testMethod = MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TestSync));
-                var pathMethod = MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.SetPawnPath));
-                var jobMethod = MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.StartJobAI));
-
-                MpTrace.Info($"[Registration-Debug] TestSync: {testMethod != null}, SetPawnPath: {pathMethod != null}, StartJobAI: {jobMethod != null}");
-            }
-            catch (Exception e)
-            {
-                MpTrace.Error($"[Registration-Error] {e}");
-            }
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TestSync));
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.SetPawnPath));
+            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.StartJobAI));
             MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TakeOrderedJob)); 
 
 
@@ -117,7 +108,8 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
-                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+                MpTrace.Info($"[StartJob-Host] InSyncAction={InSyncAction} will try to sync");
+                SyncedActions.TestSync("PathTest"); // This should increment Write counter
                 SyncedActions.MinimalTest(); // Test sync when job starts
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
             }
@@ -363,25 +355,39 @@ namespace Multiplayer.Client
             MpTrace.Info($"[MinimalTest] side={(isHost ? "HOST" : "CLIENT")} - BASIC SYNC WORKING");
         }
 
-        [SyncMethod] //(context = SyncContext.CurrentMap)]
+        [SyncMethod(context = SyncContext.CurrentMap)]
         public static void TestSync(string message)
         {
             bool isHost = Multiplayer.LocalServer != null;
+            bool inMultiplayer = MP.IsInMultiplayer;
+            bool shouldSync = Multiplayer.ShouldSync;
+            bool executingCmds = Multiplayer.ExecutingCmds;
+
+            MpTrace.Info($"[TestSync-State] side={(isHost ? "HOST" : "CLIENT")} inMP={inMultiplayer} " +
+                        $"shouldSync={shouldSync} executingCmds={executingCmds} inSyncAction={PathingPatches.InSyncAction}");
+
             MpTrace.Info($"[TestSync] side={(isHost ? "HOST" : "CLIENT")} message={message}");
         }
 
-        [SyncMethod] //(context = SyncContext.CurrentMap)]
+        [SyncMethod(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
             bool isHost = Multiplayer.LocalServer != null;
-            MpTrace.Info($"[SyncTest-StartJob] side={(isHost ? "HOST" : "CLIENT")} pawn={pawn} job={prms.def.defName}");
+            MpTrace.Info($"[StartJobAI] side={(isHost ? "HOST" : "CLIENT")} pawn={pawn} job={prms.def.defName}");
 
-            if (Multiplayer.LocalServer != null) return;
-            try { PathingPatches.InSyncAction++; pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced); }
-            finally { PathingPatches.InSyncAction--; }
+            // Both host and client should execute the job
+            try
+            {
+                PathingPatches.InSyncAction++;
+                pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced);
+            }
+            finally
+            {
+                PathingPatches.InSyncAction--;
+            }
         }
 
-        [SyncMethod] //(context = SyncContext.CurrentMap)]
+        [SyncMethod(context = SyncContext.CurrentMap)]
         public static void TakeOrderedJob(Pawn pawn, JobParams prms, JobTag? tag)
         {
             if (Multiplayer.LocalServer != null) return;
@@ -389,7 +395,7 @@ namespace Multiplayer.Client
             finally { PathingPatches.InSyncAction--; }
         }
 
-        [SyncMethod] //(context = SyncContext.CurrentMap)]
+        [SyncMethod(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
             bool isHost = Multiplayer.LocalServer != null;
