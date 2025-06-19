@@ -63,6 +63,17 @@ namespace Multiplayer.Client
         }
     }
 
+    [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
+    static class PatherTick_Probe
+    {
+        static void Postfix(Pawn_PathFollower __instance)
+        {
+            bool isClient = Multiplayer.Client != null && Multiplayer.LocalServer == null;
+            if (isClient)
+                MpTrace.Verbose($"[Trace-TickProbe] pawn={__instance.pawn} dest={__instance.Destination}");
+        }
+    }
+
     //############################################################################
     // SECTION 2: THE PATCH IMPLEMENTATIONS
     //############################################################################
@@ -87,6 +98,7 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
+                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
                 SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
             }
         }
@@ -106,6 +118,13 @@ namespace Multiplayer.Client
             if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
 
             var p = __instance.curPath;
+            if (p is { Found: true })
+            {
+                MpTrace.Verbose($"[PathSend] {__instance.pawn} "
+                    + $"First={p.FirstNode}  Last={p.LastNode}  Left={p.NodesLeftCount}");
+            }
+            else
+                MpTrace.Verbose($"[PathSend] {__instance.pawn} NO PATH – skipped");
             var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
 
             if (lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
@@ -297,6 +316,9 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void StartJobAI(Pawn pawn, JobParams prms)
         {
+            MpTrace.Info($"[StartJob-Recv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
+               + $"pawn={pawn} job={prms.def.defName} isValidJob={prms.def != null}");
+
             if (Multiplayer.LocalServer != null) return;
             try { PathingPatches.InSyncAction++; pawn.jobs.StartJob(prms.ToJob(), JobCondition.InterruptForced); }
             finally { PathingPatches.InSyncAction--; }
@@ -313,6 +335,9 @@ namespace Multiplayer.Client
         [SyncMethod(context = SyncContext.CurrentMap)]
         public static void SetPawnPath(Pawn pawn, PawnPathSurrogate surr)
         {
+            MpTrace.Info($"[PathRecv] side={(Multiplayer.LocalServer != null ? "HOST" : "CLIENT")} "
+               + $"pawn={pawn} surrogateValid={surr.isValid}");
+
             if (Multiplayer.LocalServer != null || pawn?.pather == null) return;
             var pf = pawn.pather;
             pf.curPath?.ReleaseToPool();
