@@ -21,137 +21,117 @@ namespace Multiplayer.Client
         {
             if (!MP.enabled) return;
 
-            // Apply all patches in this class
-            var harmony = new Harmony("coolnether123.pathingsync.v2");
-            harmony.PatchAll();
+            var harmony = new Harmony("coolnether123.pathingsync.final.v2");
 
-            // Manually and explicitly register our SyncWorkers. This is the most robust method.
-            MP.RegisterSyncWorker<JobParams>(ReadWriteJobParams);
-            MP.RegisterSyncWorker<PawnPathSurrogate>(ReadWritePawnPathSurrogate);
+            // Manually and explicitly patch each method.
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob)),
+                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_StartJob)),
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_StartJob))
+            );
 
-            Log.Message("[Multiplayer-Pathing] Pathing sync initialized successfully.");
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob)),
+                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_TryTakeOrderedJob))
+            );
+
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick)),
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PatherTick))
+            );
+
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.SetNewPathRequest)),
+                prefix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Prefix_SetNewPathRequest))
+            );
+
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn), nameof(Pawn.DeSpawn)),
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_PawnDeSpawn))
+            );
+
+            harmony.Patch(
+                AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.JobTrackerTickInterval)),
+                postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
+            );
+
+            // Register SyncWorkers for our custom data types.
+            MP.RegisterSyncWorker<JobParams>(SyncWorkers.ReadWriteJobParams);
+            MP.RegisterSyncWorker<PawnPathSurrogate>(SyncWorkers.ReadWritePawnPathSurrogate);
+
+            Log.Message("[Multiplayer-Pathing] Pathing sync patches applied successfully.");
+        }
+    }
+
+    //############################################################################
+    // SECTION 2: THE PATCH IMPLEMENTATIONS
+    //############################################################################
+
+    public static class PathingPatches
+    {
+        // Shared state variables
+        public static int InSyncAction = 0;
+        private static readonly Dictionary<int, (IntVec3 first, IntVec3 last, int left)> lastContentCache = new();
+        private static readonly Dictionary<int, int> lastSyncTick = new();
+
+        // Patches now reference the shared state from this single class definition.
+
+        public static bool Prefix_StartJob(Pawn_JobTracker __instance, Job newJob)
+        {
+            if (InSyncAction > 0) return true;
+            if (Multiplayer.Client != null && Multiplayer.LocalServer == null && newJob?.jobGiver != null) return false;
+            return true;
         }
 
-        // Define the SyncWorkers here for clarity and self-containment.
-        static void ReadWriteJobParams(SyncWorker worker, ref JobParams p)
+        public static void Postfix_StartJob(Pawn_JobTracker __instance, Job newJob)
         {
-            if (!worker.isWriting) p = new JobParams();
-            p.Sync(worker);
-        }
-
-        static void ReadWritePawnPathSurrogate(SyncWorker worker, ref PawnPathSurrogate p)
-        {
-            if (!worker.isWriting) p = new PawnPathSurrogate();
-            p.Sync(worker);
-        }
-
-        //=================================================
-        // HARMONY PATCHES START HERE
-        //=================================================
-
-        [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
-        [HarmonyFinalizer] // Use a finalizer to catch any exceptions from the original method
-        static Exception Finalizer(Exception __exception)
-        {
-            // This is just a safety net to log if the original StartJob ever fails.
-            if (__exception != null)
+            if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
             {
-                Log.Error($"Exception in original Pawn_JobTracker.StartJob: {__exception}");
-            }
-            return null; // Return null to suppress the original exception if needed, or rethrow it.
-        }
-
-        [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob))]
-        static class StartJob_Patch
-        {
-            // This targets the most common overload. We list all parameter types explicitly.
-            static readonly Type[] TargetMethodParams = {
-                typeof(Job), typeof(JobCondition), typeof(ThinkNode), typeof(bool), typeof(bool),
-                typeof(ThinkTreeDef), typeof(JobTag?), typeof(bool), typeof(bool), typeof(bool?),
-                typeof(bool), typeof(bool), typeof(bool)
-            };
-
-            [HarmonyPrepare]
-            static bool Prepare()
-            {
-                // Ensure the target method exists before trying to patch it.
-                var method = AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob), TargetMethodParams);
-                if (method == null)
-                {
-                    Log.Error("[Multiplayer-Pathing] Could not find Pawn_JobTracker.StartJob with the expected 13 parameters. Patch will be skipped.");
-                    return false;
-                }
-                return true;
-            }
-
-            [HarmonyTargetMethod]
-            static System.Reflection.MethodBase TargetMethod()
-            {
-                return AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.StartJob), TargetMethodParams);
-            }
-
-            static bool Prefix(ThinkNode jobGiver)
-            {
-                if (PathingPatches.InSyncAction > 0) return true;
-                if (Multiplayer.Client != null && Multiplayer.LocalServer == null && jobGiver != null) return false;
-                return true;
-            }
-
-            static void Postfix(Pawn_JobTracker __instance, Job newJob, ThinkNode jobGiver)
-            {
-                if (Multiplayer.LocalServer != null && jobGiver != null)
-                {
-                    SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
-                }
+                SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
             }
         }
 
-        [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob))]
-        static class TakeOrderedJob_Patch
+        public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
-            static bool Prefix(Job job, JobTag? tag)
-            {
-                if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
-                SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
-                return false;
-            }
+            if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
+            SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
+            return false;
         }
 
-        [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.PatherTick))]
-        static class PatherTick_Patch
+        public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
-            static void Postfix(Pawn_PathFollower __instance)
-            {
-                if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned || __instance.pawn.Drafted) return;
-                int id = __instance.pawn.thingIDNumber;
+            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned || __instance.pawn.Drafted) return;
+            int id = __instance.pawn.thingIDNumber;
 
-                if (PathingPatches.lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
+            if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
 
-                var p = __instance.curPath;
-                var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
+            var p = __instance.curPath;
+            var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
 
-                if (PathingPatches.lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
+            if (lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
 
-                PathingPatches.lastContentCache[id] = content;
-                PathingPatches.lastSyncTick[id] = GenTicks.TicksGame;
-                SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
-            }
+            lastContentCache[id] = content;
+            lastSyncTick[id] = GenTicks.TicksGame;
+            SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
         }
 
-        [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.SetNewPathRequest))]
-        static class SetNewPathRequest_Patch
+        public static bool Prefix_SetNewPathRequest() => Multiplayer.Client == null || Multiplayer.LocalServer != null;
+
+        public static void Postfix_PawnDeSpawn(Pawn __instance)
         {
-            static bool Prefix() => Multiplayer.Client == null || Multiplayer.LocalServer != null;
+            int id = __instance.thingIDNumber;
+            lastContentCache.Remove(id);
+            lastSyncTick.Remove(id);
         }
 
-        [HarmonyPatch(typeof(Pawn), nameof(Pawn.DeSpawn))]
-        static class DeSpawn_Patch
+        public static void Postfix_JobTrackerTickInterval(Pawn_JobTracker __instance)
         {
-            static void Postfix(Pawn __instance)
+            if (Multiplayer.LocalServer == null) return;
+            Pawn pawn = __instance.pawn;
+            if (pawn.Map == Find.CurrentMap) return;
+            if (__instance.curJob == null && pawn.mindState.Active)
             {
-                int id = __instance.thingIDNumber;
-                PathingPatches.lastContentCache.Remove(id);
-                PathingPatches.lastSyncTick.Remove(id);
+                __instance.TryFindAndStartJob();
             }
         }
     }
@@ -160,13 +140,19 @@ namespace Multiplayer.Client
     // SECTION 3: SHARED STATE
     //############################################################################
 
-    public static class PathingPatches
+    public static class SyncWorkers
     {
-        internal static int InSyncAction = 0;
-        internal static readonly Dictionary<int, (IntVec3 first, IntVec3 last, int left)> lastContentCache
-            = new Dictionary<int, (IntVec3, IntVec3, int)>();
-        internal static readonly Dictionary<int, int> lastSyncTick
-            = new Dictionary<int, int>();
+        public static void ReadWriteJobParams(SyncWorker worker, ref JobParams p)
+        {
+            if (!worker.isWriting) p = new JobParams();
+            p.Sync(worker);
+        }
+
+        public static void ReadWritePawnPathSurrogate(SyncWorker worker, ref PawnPathSurrogate p)
+        {
+            if (!worker.isWriting) p = new PawnPathSurrogate();
+            p.Sync(worker);
+        }
     }
 
     //############################################################################
