@@ -55,10 +55,6 @@ namespace Multiplayer.Client
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
 
-            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TestSync));
-            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.SetPawnPath));
-            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.StartJobAI));
-            MP.RegisterSyncMethod(typeof(SyncedActions), nameof(SyncedActions.TakeOrderedJob)); 
 
 
             // Register SyncWorkers for our custom data types.
@@ -106,15 +102,21 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, Job newJob)
         {
-            if (Multiplayer.LocalServer != null && newJob?.jobGiver != null)
+            if (Multiplayer.LocalServer != null && newJob != null && !newJob.playerForced)
             {
-                MpTrace.Info($"[StartJob-Host] will SYNC  {__instance.pawn}  ← {newJob.def.defName}");
+                var pawn = __instance.pawn;
+                var jobParams = new JobParams(newJob);
 
-                // REPLACE DIRECT SYNC CALL WITH DEFERRED CALL:
+                MpTrace.Info($"[StartJob-Host] will SYNC (delayed) {pawn} ← {newJob.def.defName}");
+
+                // Queue sync for next frame to avoid timing issues
                 LongEventHandler.ExecuteWhenFinished(() =>
                 {
-                    SyncedActions.TestSync("PathTest");
-                    SyncedActions.StartJobAI(__instance.pawn, new JobParams(newJob));
+                    if (pawn?.Spawned == true) // Safety check
+                    {
+                        SyncedActions.TestSync("PathTest");
+                        SyncedActions.StartJobAI(pawn, jobParams);
+                    }
                 });
             }
         }
