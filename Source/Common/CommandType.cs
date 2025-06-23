@@ -16,4 +16,6 @@ public enum CommandType : byte
     // Map scope
     MapTimeSpeed,
     Designator,
+    SyncPawnPath,   // For path updates from PatherTick
+    SyncPawnJob     // For AI-driven job starts from JobTracker
 }

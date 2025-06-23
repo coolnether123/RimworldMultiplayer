@@ -1,5 +1,7 @@
 using HarmonyLib;
 using Multiplayer.API;
+using Multiplayer.Client.Commands;
+using Multiplayer.Common;
 using RimWorld;
 using System;
 using System.Collections.Generic;
@@ -55,10 +57,7 @@ namespace Multiplayer.Client
                 AccessTools.Method(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.JobTrackerTickInterval)),
                 postfix: new HarmonyMethod(typeof(PathingPatches), nameof(PathingPatches.Postfix_JobTrackerTickInterval))
             );
-            harmony.Patch(
-        AccessTools.Method(typeof(TickManager), nameof(TickManager.TickManagerUpdate)),
-        postfix: new HarmonyMethod(typeof(ProcessPendingSyncs), nameof(ProcessPendingSyncs.Postfix))
-    );
+
 
 
             // Register SyncWorkers for our custom data types.
@@ -82,39 +81,7 @@ namespace Multiplayer.Client
         }
     }
 
-    // Add this new patch to process pending syncs:
-    [HarmonyPatch(typeof(TickManager), nameof(TickManager.TickManagerUpdate))]
-    public static class ProcessPendingSyncs
-    {
-        public static void Postfix()
-        {
-            if (pendingSyncs?.Count > 0)
-            {
-                for (int i = pendingSyncs.Count - 1; i >= 0; i--)
-                {
-                    var pending = pendingSyncs[i];
-                    if (GenTicks.TicksGame >= pending.executeAtTick)
-                    {
-                        try
-                        {
-                            if (pending.pawn?.Spawned == true)
-                            {
-                                SyncedActions.TestSync("PathTest");
-                                SyncedActions.StartJobAI(pending.pawn, pending.jobParams);
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            MpTrace.Error($"[PendingSync] Exception: {e}");
-                        }
-
-                        pendingSyncs.RemoveAt(i);
-                    }
-                }
-            }
-        }
-    }
-
+    
     //############################################################################
     // SECTION 2: THE PATCH IMPLEMENTATIONS
     //############################################################################
@@ -137,40 +104,27 @@ namespace Multiplayer.Client
 
         public static void Postfix_StartJob(Pawn_JobTracker __instance, Job newJob)
         {
-            if (Multiplayer.LocalServer != null && newJob != null && !newJob.playerForced)
+            if (Multiplayer.LocalServer != null && newJob != null && newJob.jobGiver != null && !newJob.playerForced)
             {
-                var pawn = __instance.pawn;
-                var jobParams = new JobParams(newJob);
+                // Create an instance of our custom command class
+                var commandData = new ScheduledJobStartCommand(__instance.pawn, new JobParams(newJob));
 
-                MpTrace.Info($"[StartJob-Host] will SYNC (next tick) {pawn} ← {newJob.def.defName}");
-
-                // Add to pending sync queue - safer than LongEventHandler
-                if (pendingSyncs == null) pendingSyncs = new List<PendingSync>();
-                pendingSyncs.Add(new PendingSync(pawn, jobParams, GenTicks.TicksGame + 1));
+                // Use the SERVER's command handler to send the command
+                Multiplayer.LocalServer.commands.Send(
+                    CommandType.SyncPawnJob,
+                    factionId: __instance.pawn.Faction?.loadID ?? -1,
+                    mapId: __instance.pawn.Map.uniqueID,
+                    data: commandData.Serialize() // Serialize our custom object into the data payload
+                );
             }
         }
 
-        // Add these to your PathingPatches class:
-        public static List<PendingSync> pendingSyncs;
 
-        public class PendingSync
-        {
-            public Pawn pawn;
-            public JobParams jobParams;
-            public int executeAtTick;
 
-            public PendingSync(Pawn pawn, JobParams jobParams, int executeAtTick)
-            {
-                this.pawn = pawn;
-                this.jobParams = jobParams;
-                this.executeAtTick = executeAtTick;
-            }
-        }
-
-        
 
         public static bool Prefix_TryTakeOrderedJob(Pawn_JobTracker __instance, Job job, JobTag? tag)
         {
+            // This remains the same, as it's a player-driven action and can use the existing [SyncMethod]
             if (Multiplayer.Client == null || !Multiplayer.ShouldSync) return true;
             SyncedActions.TakeOrderedJob(__instance.pawn, new JobParams(job), tag);
             return false;
@@ -178,41 +132,29 @@ namespace Multiplayer.Client
 
         public static void Postfix_PatherTick(Pawn_PathFollower __instance)
         {
+            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned || __instance.pawn.Drafted) return;
 
-            // DEBUG: Check why the early return is happening
-            bool isHost = Multiplayer.LocalServer != null;
-            bool isSpawned = __instance.pawn.Spawned;
-
-            MpTrace.Info($"[PatherTick-Debug] {__instance.pawn} isHost={isHost} isSpawned={isSpawned} " +
-                        $"map={__instance.pawn.Map?.uniqueID ?? -1}");
-
-            if (Multiplayer.LocalServer == null || !__instance.pawn.Spawned) return;
-
-            MpTrace.Info($"[PatherTick-AfterEarlyReturn] {__instance.pawn}");
+            int id = __instance.pawn.thingIDNumber;
+            if (lastSyncTick.TryGetValue(id, out int last) && GenTicks.TicksGame < last + 30) return;
 
             var p = __instance.curPath;
-            MpTrace.Info($"[PathSend-About-To-Call] {__instance.pawn} pathValid={p?.Found} " +
-                         $"willSendPath={p is { Found: true }}");
-
-            if (__instance.pawn.Drafted) return; // Skip your original filter
-            int id = __instance.pawn.thingIDNumber;
-
-            bool hasLastTick = lastSyncTick.TryGetValue(id, out int last);
-            bool tooSoon = hasLastTick && GenTicks.TicksGame < last + 30;
-            MpTrace.Info($"[Throttle-Check] {__instance.pawn} hasLastTick={hasLastTick} tooSoon={tooSoon}");
-
-            if (tooSoon) return;
-
             var content = p is { Found: true } ? (p.FirstNode, p.LastNode, p.NodesLeftCount) : (IntVec3.Invalid, IntVec3.Invalid, 0);
-            bool hasCache = lastContentCache.TryGetValue(id, out var prev);
-            bool contentSame = hasCache && prev.Equals(content);
-            MpTrace.Info($"[Cache-Check] {__instance.pawn} hasCache={hasCache} contentSame={contentSame}");
 
-            if (contentSame) return;
+            if (lastContentCache.TryGetValue(id, out var prev) && prev.Equals(content)) return;
 
-            MpTrace.Info($"[PathSend-Calling-Now] {__instance.pawn}");
-            SyncedActions.TestSync("PathTest"); // ADD THIS LINE
-            SyncedActions.SetPawnPath(__instance.pawn, new PawnPathSurrogate(p));
+            lastContentCache[id] = content;
+            lastSyncTick[id] = GenTicks.TicksGame;
+
+            // Create an instance of our custom command class
+            var commandData = new ScheduledPathUpdateCommand(__instance.pawn, new PawnPathSurrogate(p));
+
+            // Use the SERVER's command handler to send the command
+            Multiplayer.LocalServer.commands.Send(
+                CommandType.SyncPawnPath,
+                factionId: __instance.pawn.Faction?.loadID ?? -1,
+                mapId: __instance.pawn.Map.uniqueID,
+                data: commandData.Serialize() // Serialize our custom object into the data payload
+            );
         }
 
 

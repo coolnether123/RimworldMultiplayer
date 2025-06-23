@@ -10,6 +10,8 @@ using Multiplayer.Client.Factions;
 using Multiplayer.Client.Patches;
 using Multiplayer.Client.Saving;
 using Multiplayer.Client.Util;
+using Multiplayer.Client.Commands;
+using Multiplayer.Client._1_6Additions;
 
 namespace Multiplayer.Client
 {
@@ -247,28 +249,39 @@ namespace Multiplayer.Client
 
             try
             {
-                if (cmdType == CommandType.Sync)
+                if (cmdType == CommandType.SyncPawnPath)
+                {
+                    var pathCmd = new ScheduledPathUpdateCommand();
+                    // We deserialize the PAYLOAD (cmd.data) of the incoming command
+                    pathCmd.Deserialize(cmd.data);
+                    ClientSyncActions.SetPawnPath(pathCmd.pawn, pathCmd.path);
+                }
+                else if (cmdType == CommandType.SyncPawnJob)
+                {
+                    var jobCmd = new ScheduledJobStartCommand();
+                    // We deserialize the PAYLOAD (cmd.data) of the incoming command
+                    jobCmd.Deserialize(cmd.data);
+                    ClientSyncActions.StartJobAI(jobCmd.pawn, jobCmd.jobParams);
+                }
+                else if (cmdType == CommandType.Sync)
                 {
                     MpTrace.Info("--> Command is Sync. Calling SyncUtil.HandleCmd.");
                     var handler = SyncUtil.HandleCmd(data);
                     data.Log.current.text = handler.ToString();
                     MpTrace.Info("--> SyncUtil.HandleCmd finished.");
                 }
-
-                if (cmdType == CommandType.DebugTools)
+                else if (cmdType == CommandType.DebugTools)
                 {
                     DebugSync.HandleCmd(data);
                 }
-
-                if (cmdType == CommandType.MapTimeSpeed && Multiplayer.GameComp.asyncTime)
+                else if (cmdType == CommandType.MapTimeSpeed && Multiplayer.GameComp.asyncTime)
                 {
                     TimeSpeed speed = (TimeSpeed)data.ReadByte();
                     SetDesiredTimeSpeed(speed);
 
                     MpLog.Debug("Set map time speed " + speed);
                 }
-
-                if (cmdType == CommandType.Designator)
+                else if (cmdType == CommandType.Designator)
                 {
                     HandleDesignator(data);
                 }
