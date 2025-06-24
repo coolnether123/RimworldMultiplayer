@@ -42,28 +42,27 @@
                 );
             }
 
-            [PacketHandler(Packets.Server_Command)]
-            public void HandleCommand(ByteReader data)
+        [PacketHandler(Packets.Server_Command)]
+        public void HandleCommand(ByteReader data)
+        {
+            try
             {
-                try
-                {
-                    // The Deserialize method now handles everything, including the issuedBySelf flag.
-                    // We no longer need to read anything else from the stream here.
-                    ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
+                ScheduledCommand cmd = ScheduledCommand.Deserialize(data);
 
-                    MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
+                // This existing log is now our primary source of truth.
+                MpTrace.Info($"HandleCommand: DESERIALIZED command: {cmd.type}, MapID: {cmd.mapId}, Issued by Self: {cmd.issuedBySelf}.");
 
-                    Session.ScheduleCommand(cmd);
-                    Multiplayer.session.receivedCmds++;
-                    Multiplayer.session.ProcessTimeControl();
-                }
-                catch (Exception e)
-                {
-                    MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
-                }
+                Session.ScheduleCommand(cmd);
+                Multiplayer.session.receivedCmds++;
+                Multiplayer.session.ProcessTimeControl();
             }
+            catch (Exception e)
+            {
+                MpTrace.Error($"HandleCommand: CRITICAL EXCEPTION during command deserialization. Command was dropped. Exception: {e}");
+            }
+        }
 
-            [PacketHandler(Packets.Server_PlayerList)]
+        [PacketHandler(Packets.Server_PlayerList)]
             public void HandlePlayerList(ByteReader data)
             {
                 var action = (PlayerListAction)data.ReadByte();
