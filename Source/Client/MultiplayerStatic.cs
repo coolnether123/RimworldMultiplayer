@@ -112,9 +112,20 @@ namespace Multiplayer.Client
         }
 
         private static void DoubleLongEvent(Action action, string textKey)
-        {
-            LongEventHandler.QueueLongEvent(() => LongEventHandler.QueueLongEvent(action, textKey, false, null), textKey, false, null);
-        }
+            {
+                // Inner: schedule the real action
+                Action inner = () =>
+                    LongEventHandler.QueueLongEvent(action, textKey, false, null);
+
+                // Outer: schedule the inner
+                LongEventHandler.QueueLongEvent(
+                    inner,        // Action eventWorker
+                    textKey,      // string textKey
+                    false,        // bool doAsynchronously
+                    null          // Action<Exception> exceptionHandler
+                );
+            }
+
 
         private static void SetUsername()
         {

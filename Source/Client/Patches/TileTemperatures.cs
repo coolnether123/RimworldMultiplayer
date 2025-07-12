@@ -12,30 +12,41 @@ namespace Multiplayer.Client
     [HarmonyPatch(nameof(TileTemperaturesComp.CachedTileTemperatureData.CheckCache))]
     static class CachedTileTemperatureData_CheckCache
     {
-        static void Prefix(int ___tile, ref TimeSnapshot? __state)
+        // 1) Change 'ref' to 'out' and initialize __state immediately
+        static void Prefix(PlanetTile ___tile, out TimeSnapshot? __state)
         {
-            if (Multiplayer.Client == null) return;
-
-            Map map = Current.Game.FindMap(___tile);
-            if (map == null) return;
-
-            __state = TimeSnapshot.GetAndSetFromMap(map);
+            __state = null;                                      // always assign
+            if (Multiplayer.Client == null)                      // early exit if no client
+                return;
+            var map = Current.Game.FindMap(___tile);
+            if (map == null)                                     // early exit if no map
+                return;
+            __state = TimeSnapshot.GetAndSetFromMap(map);        // otherwise capture your snapshot
         }
 
-        static void Postfix(TimeSnapshot? __state) => __state?.Set();
+        // 2) Postfix now just takes the state by value
+        static void Postfix(TimeSnapshot? __state)
+        {
+            if (__state.HasValue)
+                __state.Value.Set();
+        }
     }
+
 
     [HarmonyPatch(typeof(TileTemperaturesComp), nameof(TileTemperaturesComp.RetrieveCachedData))]
     static class RetrieveCachedData_Patch
     {
-        static bool Prefix(TileTemperaturesComp __instance, int tile, ref TileTemperaturesComp.CachedTileTemperatureData __result)
+        // 1. Use the correct parameter type here:
+        static bool Prefix(TileTemperaturesComp __instance,
+                        RimWorld.Planet.PlanetTile tile,
+                        ref TileTemperaturesComp.CachedTileTemperatureData __result)
         {
-            if (Multiplayer.InInterface && __instance != Multiplayer.WorldComp.uiTemperatures)
+            if (Multiplayer.InInterface 
+            && __instance != Multiplayer.WorldComp.uiTemperatures)
             {
                 __result = Multiplayer.WorldComp.uiTemperatures.RetrieveCachedData(tile);
                 return false;
             }
-
             return true;
         }
     }
@@ -53,25 +64,31 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(GenTemperature), nameof(GenTemperature.AverageTemperatureAtTileForTwelfth))]
     static class CacheAverageTileTemperature
     {
-        static Dictionary<int, float[]> averageTileTemps = new Dictionary<int, float[]>();
+        // Now we key by the tile's int ID
+        static Dictionary<PlanetTile, float[]> averageTileTemps = new();
 
-        static bool Prefix(int tile, Twelfth twelfth)
+        // Prefix must take PlanetTile, not int
+        static bool Prefix(PlanetTile tile, Twelfth twelfth)
         {
-            return !averageTileTemps.TryGetValue(tile, out float[] arr) || float.IsNaN(arr[(int)twelfth]);
+            int tileID = tile.tileId; // or tile.TileID depending on the decompiled name
+            return !averageTileTemps.TryGetValue(tileID, out var arr)
+                   || float.IsNaN(arr[(int)twelfth]);
         }
 
-        static void Postfix(int tile, Twelfth twelfth, ref float __result)
+        // Postfix also takes PlanetTile
+        static void Postfix(PlanetTile tile, Twelfth twelfth, ref float __result)
         {
-            if (averageTileTemps.TryGetValue(tile, out float[] arr) && !float.IsNaN(arr[(int)twelfth]))
+            int tileID = tile.tileId; // same ID property
+            if (averageTileTemps.TryGetValue(tileID, out var arr)
+             && !float.IsNaN(arr[(int)twelfth]))
             {
                 __result = arr[(int)twelfth];
                 return;
             }
 
-            if (arr == null)
-                averageTileTemps[tile] = Enumerable.Repeat(float.NaN, 12).ToArray();
-
-            averageTileTemps[tile][(int)twelfth] = __result;
+            // initialize if needed
+            averageTileTemps[tileID] = Enumerable.Repeat(float.NaN, 12).ToArray();
+            averageTileTemps[tileID][(int)twelfth] = __result;
         }
 
         public static void Clear()

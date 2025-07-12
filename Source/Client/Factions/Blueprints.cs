@@ -49,6 +49,7 @@ namespace Multiplayer.Client
     }
 
 
+    
     [HarmonyPatch(typeof(GenConstruct), nameof(GenConstruct.CanPlaceBlueprintAt))]
     static class CanPlaceBlueprintAtPatch2
     {
@@ -74,29 +75,6 @@ namespace Multiplayer.Client
                 new CodeInstruction(OpCodes.Brtrue, insts[loop1 + 1].operand)
             );
 
-            int loop2 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "InteractionSpotBlocked").
-                Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
-
-            insts.Insert(
-                loop2 - 3,
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 3].operand),
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop2 - 2].operand),
-                new CodeInstruction(OpCodes.Callvirt, SpawnBuildingAsPossiblePatch.ThingListGet),
-                new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
-                new CodeInstruction(OpCodes.Brtrue, insts[loop2 + 1].operand)
-            );
-
-            int loop3 = new CodeFinder(original, insts).
-                Forward(OpCodes.Ldstr, "WouldBlockInteractionSpot").
-                Backward(OpCodes.Ldarg_S, thingToIgnore_Ldarg_S);
-
-            insts.Insert(
-                loop3 - 1,
-                new CodeInstruction(OpCodes.Ldloc_S, insts[loop3 - 1].operand),
-                new CodeInstruction(OpCodes.Call, CanPlaceBlueprintAtPatch.ShouldIgnore1Method),
-                new CodeInstruction(OpCodes.Brtrue, insts[loop3 + 1].operand)
-            );
 
             return insts;
         }

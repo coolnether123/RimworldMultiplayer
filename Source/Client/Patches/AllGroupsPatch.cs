@@ -13,16 +13,23 @@ namespace Multiplayer.Client
 
         static Dictionary<ThingDef, ThingRequestGroup[]> cache = new();
 
-        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
+       static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
         {
             var method = AccessTools.Method(typeof(AllGroupsPatch), nameof(GroupsForThing));
-
-            foreach (CodeInstruction inst in insts)
+            foreach (var inst in insts)
             {
-                if (inst.operand == AllGroups)
+                // look for the static field load you want to replace
+                if (inst.opcode == OpCodes.Ldsfld && inst.operand == AllGroups)
                 {
-                    yield return new CodeInstruction(OpCodes.Ldarg_1);
+                    // 1) clone and steal its labels
+                    var first = new CodeInstruction(OpCodes.Ldarg_1);
+                    first.labels.AddRange(inst.labels);
+                    yield return first;
+
+                    // 2) call your helper next
                     yield return new CodeInstruction(OpCodes.Call, method);
+
+                    // 3) skip the original ldsfld entirely
                 }
                 else
                 {

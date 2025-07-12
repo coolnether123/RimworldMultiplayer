@@ -34,9 +34,7 @@ namespace Multiplayer.Client.Persistent
 
             if (soundAppear != null)
                 soundAppear.PlayOneShotOnCamera();
-
-            if (soundAmbient != null)
-                sustainerAmbient = soundAmbient.TrySpawnSustainer(SoundInfo.OnCamera(MaintenanceType.PerFrame));
+ 
         }
 
         /// <summary>

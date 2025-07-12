@@ -260,8 +260,7 @@ namespace Multiplayer.Client
         public override void ExposeData()
         {
             if (Scribe.mode == LoadSaveMode.Saving) {
-                Scribe_Values.Look(ref id, "id");
-                Scribe_Custom.LookValue(dialog.soundAmbient == SoundDefOf.RadioComms_Ambience, "radioMode");
+                Scribe_Values.Look(ref id, "id"); 
                 Scribe_Values.Look(ref dialog.title, "title");
 
                 ExposeDataSaveLoad();

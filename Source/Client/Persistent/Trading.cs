@@ -752,20 +752,28 @@ namespace Multiplayer.Client
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_AgeTracker), nameof(Pawn_AgeTracker.ageBiologicalTicksInt))]
+   [HarmonyPatch(
+        typeof(Pawn_AgeTracker),
+        nameof(Pawn_AgeTracker.AgeBiologicalYears),
+        MethodType.Getter   
+    )]
     static class PawnAgeChanged
     {
-        static void Prefix(Pawn_AgeTracker __instance, ref int __state)
+        // Use `out` so Harmony can pass this through correctly
+        static void Prefix(Pawn_AgeTracker __instance, out int __state)
         {
             __state = __instance.AgeBiologicalYears;
         }
 
         static void Postfix(Pawn_AgeTracker __instance, int __state)
         {
-            if (Multiplayer.Client == null) return;
-            if (__state == __instance.AgeBiologicalYears) return;
+            if (Multiplayer.Client == null) 
+                return;
 
-            // todo?
+            if (__state == __instance.AgeBiologicalYears) 
+                return;
+
+            // TODO: handle the fact that biological age just changed
         }
     }
 

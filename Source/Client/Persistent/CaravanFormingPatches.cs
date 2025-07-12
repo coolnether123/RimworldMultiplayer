@@ -132,14 +132,18 @@ namespace Multiplayer.Client.Persistent
     [HarmonyPatch(typeof(Dialog_FormCaravan), nameof(Dialog_FormCaravan.Notify_ChoseRoute))]
     static class Notify_ChoseRoutePatch
     {
-        static bool Prefix(Dialog_FormCaravan __instance, int destinationTile)
+        // NOTE: now takes PlanetTile, not int
+        static bool Prefix(Dialog_FormCaravan __instance, PlanetTile destinationTile)
         {
             if (Multiplayer.InInterface && __instance is CaravanFormingProxy dialog)
             {
-                dialog.Session?.ChooseRoute(destinationTile);
+                // if your Session.ChooseRoute still expects an int:
+                dialog.Session?.ChooseRoute(destinationTile.tileId);  
+                // or, if it was also updated to take PlanetTile:
+                // dialog.Session?.ChooseRoute(destinationTile);
+
                 return false;
             }
-
             return true;
         }
     }
@@ -167,9 +171,7 @@ namespace Multiplayer.Client.Persistent
 
             if (__instance.GetType() != typeof(Dialog_FormCaravan))
                 return;
-
-            // Handles showing the dialog from TimedForcedExit.CompTick -> TimedForcedExit.ForceReform
-            // (note TimedForcedExit is obsolete)
+ 
             if (Multiplayer.ExecutingCmds || Multiplayer.Ticking)
             {
                 var comp = map.MpComp();
@@ -215,29 +217,40 @@ namespace Multiplayer.Client.Persistent
         }
     }
 
-    [HarmonyPatch(typeof(WorldGizmoUtility), nameof(WorldGizmoUtility.DialogFromToSettlement))]
+  [HarmonyPatch(typeof(WorldGizmoUtility), nameof(WorldGizmoUtility.DialogFromToSettlement))]
     static class HandleFormCaravanShowRoutePlanner
     {
-        static bool Prefix(Map origin, int tile)
+        // Now takes PlanetTile instead of int
+        static bool Prefix(Map origin, PlanetTile tile)
         {
             if (Multiplayer.Client == null)
                 return true;
 
-            // Override behavior in multiplayer
-            DialogFormCaravanCtorPatch.StartFormingCaravan(origin, routePlannerWaypoint: tile);
+            // If your StartFormingCaravan still wants an int:
+            DialogFormCaravanCtorPatch.StartFormingCaravan(
+                origin,
+                routePlannerWaypoint: tile.tileId   // or tile.tileInt depending on ILSpy name
+            );
 
             return false;
         }
     }
-
-    [HarmonyPatch(typeof(TimedForcedExit), nameof(TimedForcedExit.CompTick))]
+       [HarmonyPatch(typeof(TimedForcedExit), nameof(TimedForcedExit.CompTickInterval))]
     static class TimedForcedExitTickPatch
     {
-        static bool Prefix(TimedForcedExit __instance)
+        // match the real signature exactly: (TimedForcedExit __instance, int delta)
+        static bool Prefix(TimedForcedExit __instance, int delta)
         {
-            if (Multiplayer.Client != null && __instance.parent is MapParent mapParent && mapParent.HasMap)
+            // if in multiplayer and the map is paused, skip the countdown logic
+            if (Multiplayer.Client != null 
+             && __instance.parent is MapParent mapParent 
+             && mapParent.HasMap)
+            {
+                // if time is paused on that map, skip the original CompTickInterval
                 return !mapParent.Map.AsyncTime().Paused;
+            }
 
+            // otherwise let the vanilla CompTickInterval run
             return true;
         }
     }

@@ -90,8 +90,19 @@ namespace Multiplayer.Client
                 Rand.PopState();
         }
     }
-
-    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action))]
+    [HarmonyPatch(
+        typeof(LongEventHandler),
+        nameof(LongEventHandler.QueueLongEvent),
+        new[] {
+            typeof(Action),               // eventWorker
+            typeof(string),               // textKey
+            typeof(bool),                 // doAsynchronously
+            typeof(Action<Exception>),    // exceptionHandler
+            typeof(bool),                 // showExtraUIInfo
+            typeof(bool),                 // forceHideUI
+            typeof(Action)                // callback
+        }
+    )]
     static class SeedLongEvents
     {
         static void Prefix(ref Action action)

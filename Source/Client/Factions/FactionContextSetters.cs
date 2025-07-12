@@ -3,6 +3,7 @@ using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
 using Verse;
+using System.Collections.Generic;
 
 namespace Multiplayer.Client.Factions;
 
@@ -20,10 +21,10 @@ static class AttackNowPatch
     }
 }
 
-[HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new []{ typeof(int), typeof(IntVec3), typeof(WorldObjectDef) })]
+[HarmonyPatch(typeof(GetOrGenerateMapUtility), nameof(GetOrGenerateMapUtility.GetOrGenerateMap), new []{ typeof(PlanetTile), typeof(IntVec3), typeof(WorldObjectDef),typeof(IEnumerable<GenStepWithParams>),typeof(bool)})]
 static class MapGenFactionPatch
 {
-    static void Prefix(int tile)
+    static void Prefix(PlanetTile tile)
     {
         var mapParent = Find.WorldObjects.MapParentAt(tile);
         if (Multiplayer.Client != null && mapParent == null)
