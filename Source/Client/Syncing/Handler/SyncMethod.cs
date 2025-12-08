@@ -168,10 +168,10 @@ namespace Multiplayer.Client
             if (cancelIfAnyArgNull && args.Any(a => a == null))
                 return;
 
-            if (context.HasFlag(SyncContext.MapSelected) && cancelIfNoSelectedMapObjects && Find.Selector.selected.Count == 0)
+            if (context.HasFlag(SyncContext.MapSelected) && cancelIfNoSelectedMapObjects && Find.Selector.NumSelected == 0)
                 return;
 
-            if (context.HasFlag(SyncContext.WorldSelected) && cancelIfNoSelectedWorldObjects && Find.WorldSelector.selected.Count == 0)
+            if (context.HasFlag(SyncContext.WorldSelected) && cancelIfNoSelectedWorldObjects && Find.WorldSelector.NumSelectedObjects == 0)
                 return;
 
             beforeCall?.Invoke(target, args);

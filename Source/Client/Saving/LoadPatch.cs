@@ -1,7 +1,9 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Multiplayer.Client.Saving;
 using Verse;
 using Verse.Profile;
+using Multiplayer.Client.AsyncTime;
+using System.Linq;
 
 namespace Multiplayer.Client
 {
@@ -42,18 +44,7 @@ namespace Multiplayer.Client
 
             if (Multiplayer.Client != null)
             {
-                LongEventHandler.ExecuteWhenFinished(() =>
-                {
-                    // Inits all caches
-                    foreach (ITickable tickable in TickPatch.AllTickables)
-                        tickable.Tick();
-
-                    if (!Current.Game.Maps.Any())
-                    {
-                        MemoryUtility.UnloadUnusedUnityAssets();
-                        Find.World.renderer.RegenerateAllLayersNow();
-                    }
-                });
+                Multiplayer.justLoaded = true;
             }
 
             return false;

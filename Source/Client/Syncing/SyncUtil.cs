@@ -34,21 +34,28 @@ namespace Multiplayer.Client
 
         public static SyncHandler HandleCmd(ByteReader data)
         {
+            MpTrace.Verbose($"-- SyncUtil.HandleCmd invoked --");
+            //Log.Message("Made it here #1");
             int syncId = data.ReadInt32();
             SyncHandler handler;
+            //Log.Message("Made it here #2");
 
             try
             {
                 handler = Sync.handlers[syncId];
+
+                MpTrace.Verbose($"--> Found handler for syncId: {syncId}. Preparing to execute.");
             }
             catch (ArgumentOutOfRangeException)
             {
                 Log.Error($"Error: invalid syncId {syncId}/{Sync.handlers.Count}, this implies mismatched mods, ensure your versions match! Stacktrace follows.");
                 throw;
             }
+            //Log.Message("Made it here #3");
 
             List<object> prevSelected = Find.Selector.selected;
-            List<WorldObject> prevWorldSelected = Find.WorldSelector.selected;
+            List<WorldObject> prevWorldSelected = Find.WorldSelector.SelectedObjects.ToList();
+            //Log.Message("Made it here #4");
 
             bool shouldQueue = false;
 
@@ -68,28 +75,42 @@ namespace Multiplayer.Client
 
                 if (handler.context.HasFlag(SyncContext.WorldSelected))
                 {
+                    // It's safer to clear and re-select than to assign the list directly.
+                    Find.WorldSelector.ClearSelection();
                     List<ISelectable> selected = SyncSerialization.ReadSync<List<ISelectable>>(data);
-                    //Find.WorldSelector.selected = selected.Cast<WorldObject>().AllNotNull().ToList();
-                    AccessTools.Property(typeof(WorldObject), "selected").SetValue(Find.WorldSelector.selected, selected.Cast<WorldObject>().AllNotNull().ToList());
+                    foreach (var item in selected.Cast<WorldObject>().AllNotNull())
+                    {
+                        Find.WorldSelector.Select(item, playSound: false);
+                    }
                 }
 
                 if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
                     shouldQueue = data.ReadBool();
             }
+            //Log.Message("Made it here #5");
 
             KeyIsDownPatch.shouldQueue = shouldQueue;
 
             try
             {
                 handler.Handle(data);
+
             }
             finally
             {
+                // Restore selection states after the handler has run.
                 MouseCellPatch.result = null;
                 KeyIsDownPatch.shouldQueue = null;
+
+                // Restore map selection
                 Find.Selector.selected = prevSelected;
-                //Find.WorldSelector.selected = prevWorldSelected;
-                AccessTools.Property(typeof(WorldObject), "selected").SetValue(Find.WorldSelector.selected, prevWorldSelected);
+
+                // Restore world selection
+                Find.WorldSelector.ClearSelection();
+                foreach (var item in prevWorldSelected)
+                {
+                    Find.WorldSelector.Select(item, playSound: false);
+                }
             }
 
             return handler;
@@ -112,7 +133,7 @@ namespace Multiplayer.Client
                 SyncSerialization.WriteSync(data, Find.Selector.selected.Cast<ISelectable>().ToList());
 
             if (handler.context.HasFlag(SyncContext.WorldSelected))
-                SyncSerialization.WriteSync(data, Find.WorldSelector.selected.Cast<ISelectable>().ToList());
+                SyncSerialization.WriteSync(data, Find.WorldSelector.SelectedObjects.Cast<ISelectable>().ToList());
 
             if (handler.context.HasFlag(SyncContext.QueueOrder_Down))
                 data.WriteBool(KeyBindingDefOf.QueueOrder.IsDownEvent);

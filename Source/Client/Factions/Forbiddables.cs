@@ -15,7 +15,16 @@ namespace Multiplayer.Client
             if (Multiplayer.Client == null) return;
 
             if (___parent.Spawned)
-                __result = !___parent.Map.MpComp().GetCurrentCustomFactionData().unforbidden.Contains(___parent);
+            {
+                // FIX: Add null checks for map generation
+                var mapComp = ___parent.Map?.MpComp();
+                if (mapComp == null) return; // Let vanilla handle it during map generation
+
+                var factionData = mapComp.GetCurrentCustomFactionData();
+                if (factionData == null) return; // Faction data not ready yet
+
+                __result = !factionData.unforbidden.Contains(___parent);
+            }
             else
                 __result = false; // Keeping track of unspawned things is more difficult, just say it's not forbidden
         }
@@ -33,7 +42,14 @@ namespace Multiplayer.Client
 
             if (Multiplayer.Client != null && ___parent.Spawned)
             {
-                var set = ___parent.Map.MpComp().GetCurrentCustomFactionData().unforbidden;
+                // FIX: Add null checks for map generation
+                var mapComp = ___parent.Map?.MpComp();
+                if (mapComp == null) return; // Skip during map generation
+
+                var factionData = mapComp.GetCurrentCustomFactionData();
+                if (factionData == null) return; // Faction data not ready yet
+
+                var set = factionData.unforbidden;
                 changed = value ? set.Remove(___parent) : set.Add(___parent);
             }
 
@@ -49,6 +65,9 @@ namespace Multiplayer.Client
         [HarmonyPriority(MpPriority.MpFirst)]
         static void Prefix(CompForbiddable __instance, ref bool __state)
         {
+            // FIX: Skip during map generation when faction context might not be available
+            if (Multiplayer.RealPlayerFaction == null) return;
+
             FactionContext.Push(Multiplayer.RealPlayerFaction);
             __state = __instance.forbiddenInt;
             __instance.forbiddenInt = __instance.Forbidden;
@@ -57,6 +76,9 @@ namespace Multiplayer.Client
         [HarmonyPriority(MpPriority.MpLast)]
         static void Finalizer(CompForbiddable __instance, bool __state)
         {
+            // FIX: Only pop if we pushed
+            if (Multiplayer.RealPlayerFaction == null) return;
+
             __instance.forbiddenInt = __state;
             FactionContext.Pop();
         }
@@ -69,6 +91,10 @@ namespace Multiplayer.Client
         {
             if (respawningAfterLoad) return;
             if (Multiplayer.Client == null) return;
+
+            // FIX: Check if map component exists
+            var mapComp = map.MpComp();
+            if (mapComp == null) return;
 
             if (ThingContext.stack.Any(p => p.Item1?.def == ThingDefOf.ActiveDropPod)) return;
 
@@ -83,6 +109,11 @@ namespace Multiplayer.Client
         static void Prefix(Thing __instance)
         {
             if (Multiplayer.Client == null) return;
+
+            // FIX: Check if map component exists
+            var mapComp = __instance.Map?.MpComp();
+            if (mapComp == null) return;
+
             __instance.Map.MpComp().Notify_ThingDespawned(__instance);
         }
     }

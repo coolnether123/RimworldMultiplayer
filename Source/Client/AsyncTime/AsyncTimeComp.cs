@@ -10,6 +10,8 @@ using Multiplayer.Client.Factions;
 using Multiplayer.Client.Patches;
 using Multiplayer.Client.Saving;
 using Multiplayer.Client.Util;
+using Multiplayer.Client.Commands;
+using Multiplayer.Client._1_6Additions;
 
 namespace Multiplayer.Client
 {
@@ -94,13 +96,10 @@ namespace Multiplayer.Client
             tickingMap = map;
             PreContext();
 
-            //SimpleProfiler.Start();
-
             try
             {
                 map.MapPreTick();
                 mapTicks++;
-                Find.TickManager.ticksGameInt = mapTicks;
 
                 tickListNormal.Tick();
                 tickListRare.Tick();
@@ -108,8 +107,9 @@ namespace Multiplayer.Client
 
                 TickMapSessions();
 
-                storyteller.StorytellerTick();
-                storyWatcher.StoryWatcherTick();
+                // The storyteller is now only ticked at the world level, not per-map.
+                // storyteller.StorytellerTick(); // DELETED
+                // storyWatcher.StoryWatcherTick(); // DELETED
 
                 QuestManagerTickAsyncTime();
 
@@ -127,8 +127,6 @@ namespace Multiplayer.Client
                 Multiplayer.game.sync.TryAddMapRandomState(map.uniqueID, randState);
                 eventCount++;
                 tickingMap = null;
-
-                //SimpleProfiler.Pause();
             }
         }
 
@@ -164,30 +162,29 @@ namespace Multiplayer.Client
                     force: true);
             }
 
-            prevTime = TimeSnapshot.GetAndSetFromMap(map);
+            // Set our global tick override to this map's specific tick count.
+            TickManager_Patch_State.TicksGame_Agnostic = this.mapTicks;
 
+            // Set the map's local storyteller as the current one
             prevStoryteller = Current.Game.storyteller;
             prevStoryWatcher = Current.Game.storyWatcher;
-
             Current.Game.storyteller = storyteller;
             Current.Game.storyWatcher = storyWatcher;
 
-            Rand.PushState();
-            Rand.StateCompressed = randState;
-
-            // Reset the effects of SkyManager.SkyManagerUpdate
-            map.skyManager.curSkyGlowInt = map.skyManager.CurrentSkyTarget().glow;
+            // We no longer manipulate the RNG stack here.
+            // The individual patches in Patches.cs will handle it.
         }
 
         public void PostContext()
         {
+            // Restore the real storyteller
             Current.Game.storyteller = prevStoryteller;
             Current.Game.storyWatcher = prevStoryWatcher;
 
-            prevTime?.Set();
+            // IMPORTANT: Clear the global tick override
+            TickManager_Patch_State.TicksGame_Agnostic = null;
 
-            randState = Rand.StateCompressed;
-            Rand.PopState();
+            // We no longer manipulate the RNG stack here.
 
             if (Multiplayer.GameComp.multifaction)
                 map.PopFaction();
@@ -221,6 +218,8 @@ namespace Multiplayer.Client
 
         public void ExecuteCmd(ScheduledCommand cmd)
         {
+            MpTrace.Info($"ExecuteCmd: Attempting to execute command {cmd.type} for map {map.uniqueID} at tick {mapTicks}.");
+
             CommandType cmdType = cmd.type;
             LoggingByteReader data = new LoggingByteReader(cmd.data);
             data.Log.Node($"{cmdType} Map {map.uniqueID}");
@@ -250,26 +249,39 @@ namespace Multiplayer.Client
 
             try
             {
-                if (cmdType == CommandType.Sync)
+                if (cmdType == CommandType.SyncPawnPath)
                 {
+                    var pathCmd = new ScheduledPathUpdateCommand();
+                    // We deserialize the PAYLOAD (cmd.data) of the incoming command
+                    pathCmd.Deserialize(cmd.data);
+                    ClientSyncActions.SetPawnPath(pathCmd.pawn, pathCmd.path);
+                }
+                else if (cmdType == CommandType.SyncPawnJob)
+                {
+                    var jobCmd = new ScheduledJobStartCommand();
+                    // We deserialize the PAYLOAD (cmd.data) of the incoming command
+                    jobCmd.Deserialize(cmd.data);
+                    ClientSyncActions.StartJobAI(jobCmd.pawn, jobCmd.jobParams);
+                }
+                else if (cmdType == CommandType.Sync)
+                {
+                    MpTrace.Info("--> Command is Sync. Calling SyncUtil.HandleCmd.");
                     var handler = SyncUtil.HandleCmd(data);
                     data.Log.current.text = handler.ToString();
+                    MpTrace.Info("--> SyncUtil.HandleCmd finished.");
                 }
-
-                if (cmdType == CommandType.DebugTools)
+                else if (cmdType == CommandType.DebugTools)
                 {
                     DebugSync.HandleCmd(data);
                 }
-
-                if (cmdType == CommandType.MapTimeSpeed && Multiplayer.GameComp.asyncTime)
+                else if (cmdType == CommandType.MapTimeSpeed && Multiplayer.GameComp.asyncTime)
                 {
                     TimeSpeed speed = (TimeSpeed)data.ReadByte();
                     SetDesiredTimeSpeed(speed);
 
                     MpLog.Debug("Set map time speed " + speed);
                 }
-
-                if (cmdType == CommandType.Designator)
+                else if (cmdType == CommandType.Designator)
                 {
                     HandleDesignator(data);
                 }
@@ -278,6 +290,7 @@ namespace Multiplayer.Client
             }
             catch (Exception e)
             {
+                MpTrace.Error($"ExecuteCmd: Exception during command execution ({cmdType}): {e}");
                 MpLog.Error($"Map cmd exception ({cmdType}): {e}");
             }
             finally
@@ -304,6 +317,8 @@ namespace Multiplayer.Client
                     TrySetCurrentMap(prevMap);
 
                 keepTheMap = false;
+
+                MpTrace.Info($"ExecuteCmd (AsyncTimeComp): FINISHED executing command {cmd.type}.");
 
                 Multiplayer.game.sync.TryAddCommandRandomState(randState);
 

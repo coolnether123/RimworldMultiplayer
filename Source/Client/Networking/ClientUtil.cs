@@ -51,20 +51,40 @@ namespace Multiplayer.Client
 
         public static void HandleReceive(ByteReader data, bool reliable)
         {
+            // Create a copy of the raw byte data IMMEDIATELY.
+            // The buffer from LiteNetLib will be reused, so we can't delay reading it.
+            var dataCopy = new byte[data.Length];
+            Buffer.BlockCopy(data.ReadRaw(data.Length), 0, dataCopy, 0, dataCopy.Length);
+
+            // Enqueue an action that uses the COPY of the data.
+            OnMainThread.Enqueue(() => ProcessPacket(dataCopy, reliable));
+        }
+
+        private static void ProcessPacket(byte[] data, bool reliable)
+        {
+            // === STEP 1: LOG ARRIVAL ON MAIN THREAD ===
+            //MpTrace.Info("ProcessPacket: Packet has arrived on the main thread. About to process.");
+
+            if (Multiplayer.Client == null)
+            {
+                MpTrace.Warning("ProcessPacket: Multiplayer.Client is null, aborting.");
+                return;
+            }
+
             try
             {
-                Multiplayer.Client.HandleReceiveRaw(data, reliable);
+                Multiplayer.Client.HandleReceiveRaw(new ByteReader(data), reliable);
+                // === STEP 2: LOG SUCCESSFUL PROCESSING ===
+                //MpTrace.Info("ProcessPacket: HandleReceiveRaw completed without error.");
             }
             catch (Exception e)
             {
+                MpTrace.Error($"ProcessPacket: Exception during HandleReceiveRaw: {e}");
                 Log.Error($"Exception handling packet by {Multiplayer.Client}: {e}");
-
                 Multiplayer.session.disconnectInfo.titleTranslated = "MpPacketErrorLocal".Translate();
-
                 ConnectionStatusListeners.TryNotifyAll_Disconnected();
                 Multiplayer.StopMultiplayer();
             }
         }
     }
-
 }

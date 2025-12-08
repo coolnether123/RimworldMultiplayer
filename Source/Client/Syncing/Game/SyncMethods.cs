@@ -14,6 +14,80 @@ namespace Multiplayer.Client
 {
     public static class SyncMethods
     {
+
+        #region WORLD OBJECT AND CARAVAN ACTIONS
+
+        /// <summary>
+        /// This sync method handles the "DEV: Teleport to destination" action for caravans.
+        /// It takes the caravan and the target tile, and directly sets the caravan's position.
+        /// This ensures the teleportation is replicated across all clients.
+        /// </summary>
+        /// <param name="caravan">The caravan to teleport.</param>
+        /// <param name="tile">The destination tile ID.</param>
+        [SyncMethod]
+        public static void CaravanTeleport(Caravan caravan, int tile)
+        {
+            // A null check is good practice in case the caravan is destroyed
+            // between the action being fired and the command being executed.
+            if (caravan == null) return;
+
+            // This is the core logic from the original dev command.
+            caravan.Tile = tile;
+            caravan.Notify_Teleported(); // This forces the caravan's pathfinder and graphics to update.
+        }
+
+        /// <summary>
+        /// This sync method handles abandoning any MapParent, which includes both player settlements and temporary camps.
+        /// It wraps the original vanilla logic in a synced call.
+        /// </summary>
+        /// <param name="settlement">The settlement or camp to abandon.</param>
+        [SyncMethod]
+        public static void SyncedAbandonSettlement(MapParent settlement)
+        {
+            // Null/destroyed check prevents errors if the object was already removed by another action.
+            if (settlement == null || settlement.Destroyed) return;
+
+            // This is the original logic from SettlementAbandonUtility.Abandon.
+            // By running it here, we ensure it's synced for all players.
+            settlement.Abandon(false);
+            Find.GameEnder.CheckOrUpdateGameOver();
+        }
+
+        #endregion
+
+        [SyncMethod]
+        public static void SyncedSetupCamp(Caravan caravan)
+        {
+            // A null check is good practice
+            if (caravan == null) return;
+
+            // The LongEventHandler queues the map generation on a background thread.
+            // This is the original logic from the "Setup Camp" gizmo.
+            LongEventHandler.QueueLongEvent(() =>
+            {
+                // Generate the map for the camp
+                Map map = GetOrGenerateMapUtility.GetOrGenerateMap(caravan.Tile, Find.World.info.initialMapSize, WorldObjectDefOf.Camp);
+
+                // This is a crucial step that was missing. We must explicitly set the
+                // faction of the new MapParent (the Camp) to the caravan's faction.
+                map.Parent.SetFaction(caravan.Faction);
+
+                Pawn target = caravan.PawnsListForReading[0];
+
+                // Enter the newly generated map
+                CaravanEnterMapUtility.Enter(caravan, map, CaravanEnterMode.Center, extraCellValidator: (x => x.GetRoom(map).CellCount >= 600));
+
+                // Start the raid countdown timer
+                map.Parent.GetComponent<TimedDetectionRaids>()?.StartDetectionCountdown(240000, 60000);
+
+                // If this command was issued by the current player, jump their camera to the new map.
+                if (TickPatch.currentExecutingCmdIssuedBySelf)
+                {
+                    CameraJumper.TryJump((GlobalTargetInfo)(Thing)target);
+                }
+            }, "GeneratingMap", true, GameAndMapInitExceptionHandlers.ErrorWhileGeneratingMap);
+        }
+
         static SyncField SyncTimetable;
 
         public static void Init()

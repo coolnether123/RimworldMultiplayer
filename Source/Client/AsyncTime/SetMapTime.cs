@@ -194,6 +194,7 @@ namespace Multiplayer.Client
 
             var tickManager = Find.TickManager;
             var mapComp = map.AsyncTime();
+            if (mapComp == null) return null;   // <- early-exit safeguard
 
             tickManager.ticksGameInt = mapComp.mapTicks;
             tickManager.slower = mapComp.slower;

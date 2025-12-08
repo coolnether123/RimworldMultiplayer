@@ -13,6 +13,9 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null || ignore) return true;
 
+            // FIX: Check if factionIdToData exists (it will be null during map generation)
+            if (factionIdToData == null) return true;
+
             ignore = true;
             foreach (var (id, data) in factionIdToData)
             {

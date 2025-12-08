@@ -39,6 +39,44 @@ namespace Multiplayer.Client
         {
             stack.Clear();
         }
+        /// <summary>
+        /// This class provides a thread-safe way to store faction information for a specific tile
+        /// during asynchronous map generation. When a caravan settles, we store its faction here
+        /// before the background worker starts. The map generator then retrieves it.
+        /// </summary>
+        public static class TileFactionContext
+        {
+            private static readonly Dictionary<int, Faction> tileFactions = new Dictionary<int, Faction>();
+            private static readonly object lockObject = new object();
+
+            public static void SetFactionForTile(int tileId, Faction faction)
+            {
+                lock (lockObject)
+                {
+                    Log.Message($"MP: Storing faction context '{faction?.Name ?? "null"}' for tile {tileId}");
+                    tileFactions[tileId] = faction;
+                }
+            }
+
+            public static Faction GetFactionForTile(int tileId)
+            {
+                lock (lockObject)
+                {
+                    return tileFactions.TryGetValue(tileId, out Faction faction) ? faction : null;
+                }
+            }
+
+            public static void ClearTile(int tileId)
+            {
+                lock (lockObject)
+                {
+                    if (tileFactions.Remove(tileId))
+                    {
+                        Log.Message($"MP: Cleared faction context for tile {tileId}");
+                    }
+                }
+            }
+        }
     }
 
 }

@@ -59,11 +59,62 @@ namespace Multiplayer.Client
         [TweakValue("Multiplayer")]
         public static bool doSimulate = true;
 
+        public static void RunAgnosticUpdate()
+        {
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Start();
+
+            
+            if (LongEventHandler.eventQueue.Count == 0)
+            {
+                DoUpdate(out var worked);
+                if (worked) workTicks++;
+            }
+
+            if (MpVersion.IsDebug)
+                SimpleProfiler.Pause();
+        }
+
         static bool Prefix()
         {
+            if (Multiplayer.Client != null && !Multiplayer.IsReplay)
+            {
+                // Use a less spammy way to log this
+                if (Find.TickManager.TicksGame % 60 == 0)
+                {
+                    //MpTrace.Info($"TickPatch.Prefix invoked. Timer: {Timer}, TicksToRun: {ticksToRun}, ShouldHandle: {ShouldHandle}");
+                }
+            }
             if (Multiplayer.Client == null) return true;
+
+            // This is the definitive fix for all post-load issues.
+            // It runs at the start of the very first TickManagerUpdate after a load.
+            if (Multiplayer.justLoaded)
+            {
+                // Unset the flag so this only runs once.
+                Multiplayer.justLoaded = false;
+
+                //Log.Message("Multiplayer [TickPatch]: Running post-load initialization.");
+
+                // Manually prime the history for all factions.
+                if (Multiplayer.WorldComp != null)
+                {
+                    foreach (var factionId in Multiplayer.WorldComp.factionData.Keys.ToList())
+                    {
+                        var faction = Find.FactionManager.GetById(factionId);
+                        if (faction != null)
+                            Multiplayer.WorldComp.FinalizeInitFaction(faction);
+                    }
+                }
+
+                // Reset the tick controller to a clean state.
+                TickPatch.Reset();
+            }
+            TryProcessBufferedCommands();
+
             if (!ShouldHandle) return false;
             if (Frozen) return false;
+
 
             int ticksBehind = tickUntil - Timer;
             realTime += Time.deltaTime * 1000f;
@@ -91,7 +142,7 @@ namespace Multiplayer.Client
             if (realTime > 0)
                 realTime = 0;
 
-            if (Time.time - frameTimeSentAt > 32f/1000f)
+            if (Time.time - frameTimeSentAt > 32f / 1000f)
             {
                 Multiplayer.Client.Send(Packets.Client_FrameTime, avgFrameTime);
                 frameTimeSentAt = Time.time;
@@ -105,18 +156,9 @@ namespace Multiplayer.Client
 
             CheckFinishSimulating();
 
-            if (MpVersion.IsDebug)
-                SimpleProfiler.Start();
-
-            RunCmds();
-            if  (LongEventHandler.eventQueue.Count == 0)
-            {
-                DoUpdate(out var worked);
-                if (worked) workTicks++;
-            }
-
-            if (MpVersion.IsDebug)
-                SimpleProfiler.Pause();
+            // This is the single, correct call to the game update logic.
+            // The redundant second call has been removed.
+            RunAgnosticUpdate();
 
             CheckFinishSimulating();
 
@@ -165,19 +207,17 @@ namespace Multiplayer.Client
 
         private static bool RunCmds()
         {
-            int curTimer = Timer;
 
+            int curTimer = Timer;
             foreach (ITickable tickable in AllTickables)
             {
                 while (tickable.Cmds.Count > 0 && tickable.Cmds.Peek().ticks == curTimer)
                 {
                     ScheduledCommand cmd = tickable.Cmds.Dequeue();
                     tickable.ExecuteCmd(cmd);
-
-                    if (LongEventHandler.eventQueue.Count > 0) return true; // Yield to e.g. join-point creation
+                    if (LongEventHandler.eventQueue.Count > 0) return true;
                 }
             }
-
             return false;
         }
 
@@ -186,12 +226,12 @@ namespace Multiplayer.Client
             worked = false;
             updateTimer.Restart();
 
+            // Run commands once per frame, unconditionally. This is the core fix.
+            if (RunCmds()) return;
+
             while (Simulating ? (Timer < simulating.target && updateTimer.ElapsedMilliseconds < 25) : (ticksToRun > 0))
             {
-                if (RunCmds())
-                    return;
-                if (DoTick(ref worked))
-                    return;
+                if (DoTick(ref worked)) return;
             }
         }
 
@@ -204,24 +244,26 @@ namespace Multiplayer.Client
             }
         }
 
-        // Returns whether the tick loop should stop
         public static bool DoTick(ref bool worked)
         {
             tickTimer.Restart();
 
+            // The RunCmds() call is removed from here as it's now handled in DoUpdate.
+
+            // Now, tick the simulation for any unpaused tickables.
             foreach (ITickable tickable in AllTickables)
             {
-                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) == 0) continue;
-                tickable.TimeToTickThrough += 1f;
-
-                worked = true;
-                TickTickable(tickable);
+                if (tickable.TimePerTick(tickable.DesiredTimeSpeed) > 0) // Only tick if not paused
+                {
+                    worked = true;
+                    TickTickable(tickable);
+                }
             }
 
             ConstantTicker.Tick();
 
-            ticksToRun -= 1;
-            Timer += 1;
+            Timer++;
+            ticksToRun--;
 
             tickTimer.Stop();
 
@@ -236,21 +278,75 @@ namespace Multiplayer.Client
 
         private static void TickTickable(ITickable tickable)
         {
+            float timePerTick = tickable.TimePerTick(tickable.DesiredTimeSpeed);
+            if (timePerTick == 0) return;
+
+            tickable.TimeToTickThrough += 1f;
             while (tickable.TimeToTickThrough >= 0)
             {
-                float timePerTick = tickable.TimePerTick(tickable.DesiredTimeSpeed);
-                if (timePerTick == 0) break;
-
                 tickable.TimeToTickThrough -= timePerTick;
 
                 try
                 {
+                    if (tickable is AsyncWorldTimeComp)
+                        AsyncWorldTimeComp.tickingWorld = true;
+                    else if (tickable is AsyncTimeComp comp)
+                        AsyncTimeComp.tickingMap = comp.map;
+
                     tickable.Tick();
                 }
                 catch (Exception e)
                 {
                     Log.Error($"Exception during ticking {tickable}: {e}");
                 }
+                finally
+                {
+                    if (tickable is AsyncWorldTimeComp)
+                        AsyncWorldTimeComp.tickingWorld = false;
+                    else if (tickable is AsyncTimeComp)
+                        AsyncTimeComp.tickingMap = null;
+                }
+            }
+        }
+
+        private static void TryProcessBufferedCommands()
+        {
+            var session = Multiplayer.session;
+            if (session.bufferedCommands.Count > 0)
+            {
+                // === NEW LOGGING ===
+                MpTrace.Info($"-- TryProcessBufferedCommands: Buffer has {session.bufferedCommands.Sum(kv => kv.Value.Count)} items. Checking maps... --");
+            }
+            else
+            {
+                return;
+            }
+            if (session.bufferedCommands.Count == 0) return;
+
+            // Use a temporary list to avoid modifying the collection while iterating
+            List<int> processedMapIds = new List<int>();
+
+            foreach (var entry in session.bufferedCommands)
+            {
+                int mapId = entry.Key;
+                Map map = Find.Maps.FirstOrDefault(m => m.uniqueID == mapId);
+
+                if (map != null && map.AsyncTime() != null)
+                {
+                    MpTrace.Info($"Map {mapId} is now available. Processing {entry.Value.Count} buffered commands.");
+                    var mapQueue = map.AsyncTime().cmds;
+                    foreach (var cmd in entry.Value)
+                    {
+                        mapQueue.Enqueue(cmd);
+                    }
+                    processedMapIds.Add(mapId);
+                }
+            }
+
+            // Remove the processed commands from the buffer
+            foreach (int mapId in processedMapIds)
+            {
+                session.bufferedCommands.Remove(mapId);
             }
         }
 

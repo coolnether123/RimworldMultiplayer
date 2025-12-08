@@ -16,6 +16,8 @@ namespace Multiplayer.Client
 {
     public class MultiplayerSession : IConnectionStatusListener
     {
+        public Dictionary<int, List<ScheduledCommand>> bufferedCommands = new();
+
         public string gameName;
         public int playerId;
 
@@ -218,15 +220,43 @@ namespace Multiplayer.Client
 
         public void ScheduleCommand(ScheduledCommand cmd)
         {
-            MpLog.Debug(cmd.ToString());
-            dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
+            // This top-level log is still useful.
+            //MpTrace.Info($"ScheduleCommand: Received {cmd.type} for mapId {cmd.mapId}, tick {cmd.ticks}.");
 
+            dataSnapshot.MapCmds.GetOrAddNew(cmd.mapId).Add(cmd);
             if (Current.ProgramState != ProgramState.Playing) return;
 
             if (cmd.mapId == ScheduledCommand.Global)
+            {
                 Multiplayer.AsyncWorldTime.cmds.Enqueue(cmd);
+                //MpTrace.Info("--> Queued GLOBAL command.");
+            }
             else
-                cmd.GetMap()?.AsyncTime().cmds.Enqueue(cmd);
+            {
+                Map map = cmd.GetMap();
+
+                // If the map doesn't exist yet, buffer the command.
+                if (map == null)
+                {
+                    MpTrace.Warning($"--> Map {cmd.mapId} not loaded. Buffering command {cmd.type}.");
+                    bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                    return;
+                }
+
+                var asyncTime = map.AsyncTime();
+
+                // If the map exists but its AsyncTime component is not ready, buffer the command.
+                if (asyncTime == null)
+                {
+                    MpTrace.Warning($"--> Map {cmd.mapId} exists, but its AsyncTime is not ready. Buffering command {cmd.type}.");
+                    bufferedCommands.GetOrAddNew(cmd.mapId).Add(cmd);
+                    return;
+                }
+
+                // If both map and asyncTime are ready, queue the command directly.
+                asyncTime.cmds.Enqueue(cmd);
+                //MpTrace.Info($"--> Queued MAP command for map {cmd.mapId}.");
+            }
         }
 
         public void Update()

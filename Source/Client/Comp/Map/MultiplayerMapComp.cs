@@ -261,13 +261,13 @@ namespace Multiplayer.Client
             }
         }
     }
-
+    /*
     [HarmonyPatch(typeof(ListerHaulables))]
     [HarmonyPatch(nameof(ListerHaulables.ListerHaulablesTick))]
     public static class HaulablesTickPatch
     {
         static bool Prefix() => Multiplayer.Client == null || MultiplayerMapComp.tickingFactions;
-    }
+    }*/
 
     [HarmonyPatch(typeof(ResourceCounter))]
     [HarmonyPatch(nameof(ResourceCounter.ResourceCounterTick))]

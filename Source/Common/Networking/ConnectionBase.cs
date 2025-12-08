@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+
 
 namespace Multiplayer.Common
 {
@@ -126,7 +128,6 @@ namespace Multiplayer.Common
                 throw new PacketReadException($"Bad packet id {msgId}");
 
             Packets packetType = (Packets)msgId;
-            ServerLog.Verbose($"Received packet {this}: {packetType}");
 
             var handler = StateObj?.GetPacketHandler(packetType) ?? MpConnectionState.packetHandlers[(int)State, (int)packetType];
             if (handler == null)
@@ -139,9 +140,6 @@ namespace Multiplayer.Common
 
             if (fragState != FragNone && fragmented == null)
                 fullSize = reader.ReadInt32();
-
-            if (reader.Left > FragmentSize)
-                throw new PacketReadException($"Packet {packetType} too big {reader.Left}>{FragmentSize}");
 
             if (fragState == FragNone)
             {

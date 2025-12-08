@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
@@ -229,8 +229,8 @@ public class AsyncWorldTimeComp : IExposable, ITickable
             DebugSettings.godMode = prevGodMode;
             Prefs.data.devMode = prevDevMode;
 
-            MpLog.Debug($"rand calls {DeferredStackTracing.randCalls - randCalls1}");
-            MpLog.Debug("rand state " + Rand.StateCompressed);
+            //MpLog.Debug($"rand calls {DeferredStackTracing.randCalls - randCalls1}");
+            //MpLog.Debug("rand state " + Rand.StateCompressed);
 
             FactionExtensions.PopFaction();
             PostContext();
@@ -275,7 +275,7 @@ public class AsyncWorldTimeComp : IExposable, ITickable
                 lastSpeedChange = Time.realtimeSinceStartup;
         }
 
-        MpLog.Debug($"Set world speed {speed} {TickPatch.Timer} {Find.TickManager.TicksGame}");
+        //MpLog.Debug($"Set world speed {speed} {TickPatch.Timer} {Find.TickManager.TicksGame}");
     }
 
     private void HandleTimeVote(ScheduledCommand cmd, ByteReader data)

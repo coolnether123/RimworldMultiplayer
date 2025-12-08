@@ -6,6 +6,8 @@ using Verse;
 using Multiplayer.Client.Persistent;
 using Multiplayer.Client.Saving;
 using Multiplayer.Common;
+using System;
+using HarmonyLib;
 
 namespace Multiplayer.Client;
 
@@ -30,6 +32,8 @@ public class MultiplayerWorldComp : IHasSessionData
         uiTemperatures = new TileTemperaturesComp(world);
     }
 
+
+
     // Called from AsyncWorldTimeComp.ExposeData (for backcompat)
     public void ExposeData()
     {
@@ -40,7 +44,72 @@ public class MultiplayerWorldComp : IHasSessionData
         if (!PauseLockSession.pauseLocks.NullOrEmpty())
             sessionManager.AddSession(new PauseLockSession(null));
 
-        DoBackCompat();
+        // The DoBackCompat logic is now handled by the SaveLoad_SaveAndReload_Patch
+        // DoBackCompat(); 
+    }
+
+    // Creates and fully initializes all world- and map-level data for a new faction.
+    public void InitNewPlayerFaction(Faction faction)
+    {
+        Log.Message($"Multiplayer: Initializing all data for new faction {faction.Name} ({faction.loadID})");
+
+        // Create and add the world-level data
+        var newWorldData = FactionWorldData.New(faction.loadID);
+        factionData[faction.loadID] = newWorldData;
+        newWorldData.ReassignIds();
+
+        // This creates the first data point and prevents the "Sequence contains no elements" error.
+        newWorldData.history.FinalizeInit();
+
+        // Tell all existing maps about this new faction
+        foreach (var map in Find.Maps)
+            MapSetup.InitNewFactionData(map, faction);
+    }
+
+    // This ensures all sub-managers, especially History, get their initial state.
+    public void FinalizeInitFaction(Faction faction)
+    {
+        if (!factionData.TryGetValue(faction.loadID, out FactionWorldData worldData))
+        {
+            Log.Warning($"Multiplayer: Tried to finalize init for faction {faction.Name} ({faction.loadID}) but no FactionWorldData was found. Creating it now.");
+            worldData = FactionWorldData.New(faction.loadID);
+            factionData[faction.loadID] = worldData;
+            worldData.ReassignIds();
+        }
+
+        var history = worldData.history;
+        var recorderGroupsField = Traverse.Create(history).Field("autoRecorderGroups");
+        var recorderGroups = recorderGroupsField.GetValue<List<HistoryAutoRecorderGroup>>();
+
+        if (recorderGroups == null)
+        {
+            Log.Message($"Multiplayer: History recorders for {faction.Name} are null. Manually creating them.");
+            Traverse.Create(history).Method("AddOrRemoveHistoryRecorderGroups").GetValue();
+            recorderGroups = recorderGroupsField.GetValue<List<HistoryAutoRecorderGroup>>(); // Re-fetch the list after creation
+        }
+
+        // This prevents the "Sequence contains no elements" error.
+        if (recorderGroups != null)
+        {
+            Log.Message($"Multiplayer: Manually priming {recorderGroups.Count} history recorder groups for {faction.Name}.");
+            foreach (var group in recorderGroups)
+            {
+                group.Tick();
+            }
+        }
+        else
+        {
+            Log.Error($"Multiplayer: Failed to create or find history recorders for {faction.Name}. This may cause issues.");
+        }
+
+        // Initialize map-level data for this faction on all maps
+        foreach (var map in Find.Maps)
+        {
+            if (!map.MpComp().factionData.ContainsKey(faction.loadID))
+            {
+                MapSetup.InitNewFactionData(map, faction);
+            }
+        }
     }
 
     private void DoBackCompat()
@@ -54,11 +123,11 @@ public class MultiplayerWorldComp : IHasSessionData
             {
                 spectatorFaction = HostUtil.AddNewFaction("Spectator", FactionDefOf.PlayerColony);
 
-                factionData[spectatorFaction.loadID] = FactionWorldData.New(spectatorFaction.loadID);
-                factionData[spectatorFaction.loadID].ReassignIds();
 
-                foreach (var map in Find.Maps)
-                    MapSetup.InitNewFactionData(map, spectatorFaction);
+                if (!factionData.ContainsKey(spectatorFaction.loadID))
+                {
+                    factionData[spectatorFaction.loadID] = FactionWorldData.New(spectatorFaction.loadID);
+                }
             }
 
             void RemoveOpponentFaction()
